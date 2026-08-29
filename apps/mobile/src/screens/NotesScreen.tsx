@@ -29,7 +29,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useFeatureBrowse } from '../features/store/useFeatureBrowse';
 import { useNoteWrites } from '../features/store/useNoteWrites';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
-import { notesQueryKeys } from '../features/store/notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from '../features/store/notesQuery';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { trackObservabilityEvent } from '../observability';
 import { trackProductEvent } from '../observability/productAnalytics';
@@ -418,7 +418,7 @@ export function NotesScreen({ navigation }: NotesScreenProps) {
 
     try {
       const notePhotos = await queryClient.fetchQuery({
-        queryKey: ['feature', 'notePhotos', note.id],
+        queryKey: notePhotosQueryKeys.detail(note.id),
         queryFn: ({ signal }) => listNotePhotosForNote(note.id, { signal }),
       });
       if (notePhotos.length === 0) {

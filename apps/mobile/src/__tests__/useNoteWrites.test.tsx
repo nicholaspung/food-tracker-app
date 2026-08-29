@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { showQueuedOfflineAlert } from '../lib/offlineAlerts';
 import { createNote, deleteNote, markNoteUsed, updateNote } from '../features/store/notesStore';
-import { notesQueryKeys } from '../features/store/notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from '../features/store/notesQuery';
 import { usageQueryKeys } from '../features/store/usageQuery';
 import { promoteCachedNoteToUsed, removeCachedNote } from '../features/store/notesCache';
 import { useNoteWrites } from '../features/store/useNoteWrites';
@@ -138,7 +138,7 @@ describe('useNoteWrites', () => {
     expect(mockedCreateNote).toHaveBeenCalledWith(input);
     expect(queryClient.setQueryData).toHaveBeenCalledWith(notesQueryKeys.detail('note_1'), savedNote);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notePhotos'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notePhotosQueryKeys.root });
     expect(result).toEqual({ status: 'completed', result: savedNote });
 
     await act(async () => {
@@ -234,9 +234,9 @@ describe('useNoteWrites', () => {
     expect(mockedUpdateNote).toHaveBeenCalledWith('note_1', updates);
     expect(queryClient.setQueryData).toHaveBeenCalledWith(notesQueryKeys.detail('note_1'), savedNote);
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notePhotos'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notePhotosQueryKeys.root });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
-      queryKey: ['feature', 'notePhotos', 'note_1'],
+      queryKey: notePhotosQueryKeys.detail('note_1'),
     });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
       queryKey: usageQueryKeys.monthlyRoot,
@@ -310,7 +310,7 @@ describe('useNoteWrites', () => {
     expect(mockedDeleteNote).not.toHaveBeenCalled();
     expect(mockedRemoveCachedNote).toHaveBeenCalledWith(queryClient, 'note_1');
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notesQueryKeys.root });
-    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['feature', 'notePhotos'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: notePhotosQueryKeys.root });
     expect(mockedShowQueuedOfflineAlert).toHaveBeenCalledWith({
       analyticsSource: 'useNoteWrites',
       subject: 'Note delete',

@@ -16,7 +16,7 @@ import {
   markNoteUsed,
   updateNote,
 } from './notesStore';
-import { notesQueryKeys } from './notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from './notesQuery';
 import { profileQueryKeys } from './profileQuery';
 import { usageQueryKeys } from './usageQuery';
 
@@ -132,7 +132,7 @@ async function reconcileNoteReplayCaches(
   ];
   if (hasReplayCacheHint(outcome, 'note-photos')) {
     invalidations.push(
-      queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
+      queryClient.invalidateQueries({ queryKey: notePhotosQueryKeys.root }),
     );
   }
   if (hasReplayCacheHint(outcome, 'usage')) {

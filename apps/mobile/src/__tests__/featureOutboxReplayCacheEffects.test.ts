@@ -3,6 +3,7 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { reconcileSuccessfulFeatureOutboxReplay } from '../features/store/featureOutboxReplayAdapters';
 import { resolveRegisteredFeatureOutboxReplayMetadata } from '../features/store/featureOutboxReplayAdapters';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
+import { notePhotosQueryKeys } from '../features/store/notesQuery';
 import { applyQueuedFeatureWriteBrowseProjection } from '../features/store/queuedFeatureWriteBrowseProjection';
 import type { QueuedFeatureWrite } from '../features/store/queuedFeatureWrites';
 import { usageQueryKeys } from '../features/store/usageQuery';
@@ -82,6 +83,19 @@ describe('feature outbox replay cache effects', () => {
       queryClient.clear();
     },
   );
+
+  it('invalidates note photos after replay when the write changed photos', async () => {
+    const queryClient = new QueryClient();
+    const invalidateQueries = jest.spyOn(queryClient, 'invalidateQueries');
+
+    await reconcileSuccessfulFeatureOutboxReplay(
+      queryClient,
+      createOutcome('note.update', { noteId: 'note_1' }, ['note-photos']),
+    );
+
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: notePhotosQueryKeys.root });
+    queryClient.clear();
+  });
 
   it.each([
     ['visit.create', {}, ['usage', 'visit-photos'], true, true],

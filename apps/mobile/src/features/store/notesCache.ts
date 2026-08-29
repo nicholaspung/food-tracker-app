@@ -2,7 +2,12 @@ import type { InfiniteData, QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type { NoteRecord } from '../models';
 import type { NoteCountSummary, NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from './featureStore';
-import { isPaginatedNotesQueryKey, matchesNoteSearch, notesQueryKeys } from './notesQuery';
+import {
+  isPaginatedNotesQueryKey,
+  matchesNoteSearch,
+  notePhotosQueryKeys,
+  notesQueryKeys,
+} from './notesQuery';
 
 interface PromoteCachedNoteToUsedInput {
   noteId: string;
@@ -261,7 +266,7 @@ export function removeCachedNote(queryClient: QueryClient, noteId: string): void
   const existingNote = findCachedNote(queryClient, noteId);
 
   queryClient.removeQueries({ queryKey: notesQueryKeys.detail(noteId) });
-  queryClient.removeQueries({ queryKey: ['feature', 'notePhotos', noteId] });
+  queryClient.removeQueries({ queryKey: notePhotosQueryKeys.detail(noteId) });
 
   if (!existingNote) {
     return;

@@ -2,6 +2,7 @@ import {
   isNoteDetailQueryKey,
   isNotesSummaryQueryKey,
   isPaginatedNotesQueryKey,
+  notePhotosQueryKeys,
   notesQueryKeys,
 } from '../features/store/notesQuery';
 
@@ -13,6 +14,11 @@ describe('notesQuery', () => {
 
   it('normalizes whitespace in the canonical note detail key', () => {
     expect(notesQueryKeys.detail('  note_1  ')).toEqual(['feature', 'notes', 'detail', 'note_1']);
+  });
+
+  it('defines normalized root and detail keys for note photos', () => {
+    expect(notePhotosQueryKeys.root).toEqual(['feature', 'notePhotos']);
+    expect(notePhotosQueryKeys.detail('  note_1  ')).toEqual(['feature', 'notePhotos', 'note_1']);
   });
 
   it('uses the canonical paginated notes browse key', () => {

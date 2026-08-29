@@ -2,7 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 
 import type { NoteDetailRecord, NoteOverviewItemRecord, NoteOverviewPage } from '../features/store/featureStore';
 import { promoteCachedNoteToUsed, removeCachedNote } from '../features/store/notesCache';
-import { notesQueryKeys } from '../features/store/notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from '../features/store/notesQuery';
 
 function buildNote(
   id: string,
@@ -148,6 +148,7 @@ describe('notesCache', () => {
       note: deletedNote,
       photos: [],
     });
+    queryClient.setQueryData(notePhotosQueryKeys.detail('note_1'), [{ id: 'photo_1' }]);
     queryClient.setQueryData(notesQueryKeys.paginated('draft'), {
       pages: [
         buildNotesPage([deletedNote, remainingNote], {
@@ -183,6 +184,7 @@ describe('notesCache', () => {
     removeCachedNote(queryClient, 'note_1');
 
     expect(queryClient.getQueryData(notesQueryKeys.detail('note_1'))).toBeUndefined();
+    expect(queryClient.getQueryData(notePhotosQueryKeys.detail('note_1'))).toBeUndefined();
     expect(
       queryClient.getQueryData<{
         pages: NoteOverviewPage[];

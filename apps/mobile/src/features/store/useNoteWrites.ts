@@ -5,7 +5,7 @@ import type { NoteRecord } from '../models';
 import type { CreateNoteInput, MarkNoteUsedInput, UpdateNoteInput } from './featureStore';
 import { applyNoteUsedCacheEffects, writeNoteUsedWithOfflineSupport } from './noteUsedWrite';
 import { removeCachedNote } from './notesCache';
-import { notesQueryKeys } from './notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from './notesQuery';
 import {
   createNote,
   deleteNote,
@@ -36,9 +36,9 @@ async function invalidateNotePhotoQueries(
   noteId?: string,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos'] }),
+    queryClient.invalidateQueries({ queryKey: notePhotosQueryKeys.root }),
     ...(noteId
-      ? [queryClient.invalidateQueries({ queryKey: ['feature', 'notePhotos', noteId] })]
+      ? [queryClient.invalidateQueries({ queryKey: notePhotosQueryKeys.detail(noteId) })]
       : []),
   ]);
 }

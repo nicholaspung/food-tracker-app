@@ -37,10 +37,6 @@ function hasQueryKeyPrefix(queryKey: QueryKey, prefix: readonly unknown[]): bool
   return Array.isArray(queryKey) && prefix.every((segment, index) => queryKey[index] === segment);
 }
 
-function isBrowseNotePhotosQuery(queryKey: QueryKey): boolean {
-  return hasQueryKeyPrefix(queryKey, ['feature', 'notePhotos', 'notes']) && queryKey.length === 3;
-}
-
 function isPaginatedFeedbackListQuery(queryKey: QueryKey): boolean {
   return isFeedbackListQueryKey(queryKey);
 }
@@ -88,8 +84,6 @@ function isPersistedFeatureQuery(queryKey: QueryKey): boolean {
       return queryKey.length === 2 || isHomeFeedPhotosQuery(queryKey);
     case 'notes':
       return queryKey.length === 2 || isPaginatedNotesQueryKey(queryKey) || isNotesSummaryQueryKey(queryKey);
-    case 'notePhotos':
-      return isBrowseNotePhotosQuery(queryKey);
     case 'friends':
       return (
         (queryKey.length === 6 && isPaginatedFriendsQueryKey(queryKey)) ||

@@ -28,6 +28,11 @@ export const notesQueryKeys = {
   summary: ['feature', 'notes', 'summary'] as const,
 };
 
+export const notePhotosQueryKeys = {
+  root: ['feature', 'notePhotos'] as const,
+  detail: (noteId: string) => ['feature', 'notePhotos', normalizeNoteIdQueryValue(noteId)] as const,
+};
+
 export function matchesNoteSearch(note: Pick<NoteRecord, 'content' | 'locationText'>, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {

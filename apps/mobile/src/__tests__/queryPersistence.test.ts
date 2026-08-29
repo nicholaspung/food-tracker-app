@@ -8,7 +8,7 @@ import { feedbackQueryKeys } from '../features/store/feedbackQuery';
 import { friendsQueryKeys } from '../features/store/friendsQuery';
 import { homeFeedQueryKeys } from '../features/store/homeFeedQuery';
 import { moreFeatureSignalQueryKeys } from '../features/store/moreFeatureSignalsQuery';
-import { notesQueryKeys } from '../features/store/notesQuery';
+import { notePhotosQueryKeys, notesQueryKeys } from '../features/store/notesQuery';
 import { profileQueryKeys } from '../features/store/profileQuery';
 import { tastingSessionsQueryKeys } from '../features/store/tastingSessionsQuery';
 import { localPersistence } from '../localPersistence';
@@ -105,17 +105,14 @@ describe('React Query persistence', () => {
       draftCount: 1,
       usedCount: 0,
     });
-    sourceClient.setQueryData(['feature', 'notePhotos', 'notes'], {
-      loadedIds: ['note_1'],
-      records: [
-        {
-          id: 'note_photo_1',
-          note: 'note_1',
-          photo: 'note-photo-1.jpg',
-          created: '2026-02-12T00:00:00.000Z',
-        },
-      ],
-    });
+    sourceClient.setQueryData(notePhotosQueryKeys.detail('note_1'), [
+      {
+        id: 'note_photo_1',
+        note: 'note_1',
+        photo: 'note-photo-1.jpg',
+        created: '2026-02-12T00:00:00.000Z',
+      },
+    ]);
     sourceClient.setQueryData(friendsQueryKeys.summary('user-1'), {
       friendsCount: 1,
       requestsCount: 0,
@@ -373,9 +370,7 @@ describe('React Query persistence', () => {
     expect(restoredClient.getQueryData(notesQueryKeys.summary)).toEqual(
       sourceClient.getQueryData(notesQueryKeys.summary),
     );
-    expect(restoredClient.getQueryData(['feature', 'notePhotos', 'notes'])).toEqual(
-      sourceClient.getQueryData(['feature', 'notePhotos', 'notes']),
-    );
+    expect(restoredClient.getQueryData(notePhotosQueryKeys.detail('note_1'))).toBeUndefined();
     expect(restoredClient.getQueryData(friendsQueryKeys.summary('user-1'))).toEqual(
       sourceClient.getQueryData(friendsQueryKeys.summary('user-1')),
     );

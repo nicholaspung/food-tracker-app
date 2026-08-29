@@ -3,6 +3,7 @@ import { FlatList } from 'react-native';
 import { act, create } from 'react-test-renderer';
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 
+import { notePhotosQueryKeys } from '../features/store/notesQuery';
 import { useNoteWrites } from '../features/store/useNoteWrites';
 import { useQueuedFeatureWrites } from '../features/store/useQueuedFeatureWrites';
 import { trackObservabilityEvent } from '../observability';
@@ -750,6 +751,52 @@ describe('NotesScreen', () => {
         position: 'relative',
       }),
     ).toBe(true);
+  });
+
+  it('loads note photos on demand with the shared detail key', async () => {
+    const fetchQuery = jest.fn().mockResolvedValue([]);
+    let renderer: any = null;
+
+    mockedUseQueryClient.mockReturnValue({
+      fetchQuery,
+      getQueriesData: jest.fn(() => []),
+      invalidateQueries: jest.fn(),
+    } as unknown as ReturnType<typeof useQueryClient>);
+    mockNotesQueries({
+      baseItems: [
+        buildNote({
+          photoPreview: {
+            count: 1,
+            id: 'photo_1',
+            photo: 'thumb.jpg',
+          },
+        }),
+      ],
+    });
+
+    await act(async () => {
+      renderer = create(
+        <NotesScreen
+          navigation={{
+            navigate: jest.fn(),
+          } as never}
+          route={{} as never}
+        />,
+      );
+    });
+
+    await act(async () => {
+      renderer?.root.findByProps({
+        accessibilityLabel: 'View photos for note note_1',
+      }).props.onPress();
+    });
+
+    expect(fetchQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryFn: expect.any(Function),
+        queryKey: notePhotosQueryKeys.detail('note_1'),
+      }),
+    );
   });
 
   it('expands note previews inline while keeping the location row and actions available', async () => {
