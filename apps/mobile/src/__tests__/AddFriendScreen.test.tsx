@@ -148,6 +148,17 @@ function renderAddFriendScreen() {
   );
 }
 
+function flattenStyle(style: any): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (combined, entry) => ({ ...combined, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style && typeof style === 'object' ? style : {};
+}
+
 describe('AddFriendScreen', () => {
   let sendFriendRequest: jest.Mock;
 
@@ -247,5 +258,37 @@ describe('AddFriendScreen', () => {
     await act(async () => {
       resolveRequest?.({ status: 'completed' });
     });
+  });
+
+  it('keeps the scanner-light action named and gives it a 44-point target', () => {
+    let renderer: any;
+
+    act(() => {
+      renderer = renderAddFriendScreen();
+    });
+
+    act(() => {
+      renderer.root.findByType('FeatureFormScreenScaffold').props.headerBottomContent.props.onChange('scan-qr');
+    });
+
+    const torchButton = renderer.root.findByProps({ accessibilityLabel: 'Turn scanner light on' });
+    expect(torchButton.props.accessibilityRole).toBe('button');
+    expect(flattenStyle(torchButton.props.style({ pressed: false }))).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(renderer.root.findByProps({
+      testID: 'add-friend-scanner-light-button-visual',
+    }).props.style)).toMatchObject({
+      height: 36,
+      width: 36,
+    });
+
+    act(() => {
+      torchButton.props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Turn scanner light off' })).toBeDefined();
+    expect(renderer.root.findByType('CameraView').props.enableTorch).toBe(true);
   });
 });

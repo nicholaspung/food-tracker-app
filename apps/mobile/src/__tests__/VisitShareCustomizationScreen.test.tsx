@@ -214,6 +214,37 @@ describe('VisitShareCustomizationScreen', () => {
     expect(visitDateLabelsInCanvas).toHaveLength(1);
   });
 
+  it('gives the named close action a 44-point button target', async () => {
+    let renderer: any = null;
+
+    await act(async () => {
+      renderer = create(
+        <VisitShareCustomizationScreen
+          navigation={{
+            goBack: jest.fn(),
+          } as never}
+          route={{
+            params: buildRouteParams(),
+          } as never}
+        />,
+      );
+    });
+
+    const closeButton = renderer.root.findByProps({
+      accessibilityLabel: 'Close share customization',
+    });
+
+    expect(closeButton.props.accessibilityRole).toBe('button');
+    expect(flattenStyle(closeButton.props.style)).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(renderer.root.findByProps({ testID: 'visit-share-close-button-visual' }).props.style)).toMatchObject({
+      height: 38,
+      width: 38,
+    });
+  });
+
   it('keeps footer metadata toggles independent', async () => {
     let renderer: any = null;
 

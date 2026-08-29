@@ -138,6 +138,12 @@ const useStyles = createThemedStyles((theme) => ({
     flexDirection: 'row',
     gap: theme.spacing.xs,
   },
+  inlineIconButtonTarget: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   inlineIconButton: {
     alignItems: 'center',
     borderColor: theme.colors.border.default,
@@ -700,16 +706,18 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                         accessibilityRole="button"
                         onPress={handleStartEditAccountName}
                         style={({ pressed }) => [
-                          styles.inlineIconButton,
+                          styles.inlineIconButtonTarget,
                           pressed ? { opacity: 0.75 } : null,
                         ]}
                         testID="profile-edit-account-name-button"
                       >
-                        <Ionicons
-                          color={theme.colors.text.muted}
-                          name="create-outline"
-                          size={18}
-                        />
+                        <View style={styles.inlineIconButton} testID="profile-edit-account-name-button-visual">
+                          <Ionicons
+                            color={theme.colors.text.muted}
+                            name="create-outline"
+                            size={18}
+                          />
+                        </View>
                       </Pressable>
                     ) : null}
                   </View>
@@ -735,25 +743,28 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             disabled={updateAccountNameMutation.isPending}
                             onPress={handleSaveAccountName}
                             style={({ pressed }) => [
-                              styles.inlineIconButton,
+                              styles.inlineIconButtonTarget,
                               updateAccountNameMutation.isPending
                                 ? styles.inlineIconButtonDisabled
                                 : null,
                               pressed ? { opacity: 0.75 } : null,
                             ]}
+                            testID="profile-save-account-name-button"
                           >
-                            {updateAccountNameMutation.isPending ? (
-                              <ActivityIndicator
-                                color={theme.colors.text.success}
-                                size="small"
-                              />
-                            ) : (
-                              <Ionicons
-                                color={theme.colors.text.success}
-                                name="checkmark"
-                                size={18}
-                              />
-                            )}
+                            <View style={styles.inlineIconButton} testID="profile-save-account-name-button-visual">
+                              {updateAccountNameMutation.isPending ? (
+                                <ActivityIndicator
+                                  color={theme.colors.text.success}
+                                  size="small"
+                                />
+                              ) : (
+                                <Ionicons
+                                  color={theme.colors.text.success}
+                                  name="checkmark"
+                                  size={18}
+                                />
+                              )}
+                            </View>
                           </Pressable>
                           <Pressable
                             accessibilityLabel="Cancel editing account name"
@@ -761,7 +772,7 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             disabled={updateAccountNameMutation.isPending}
                             onPress={handleCancelEditAccountName}
                             style={({ pressed }) => [
-                              styles.inlineIconButton,
+                              styles.inlineIconButtonTarget,
                               updateAccountNameMutation.isPending
                                 ? styles.inlineIconButtonDisabled
                                 : null,
@@ -769,11 +780,13 @@ export function ProfileScreen({ navigation }: ProfileScreenProps) {
                             ]}
                             testID="profile-cancel-edit-account-name-button"
                           >
-                            <Ionicons
-                              color={theme.colors.text.danger}
-                              name="close"
-                              size={18}
-                            />
+                            <View style={styles.inlineIconButton} testID="profile-cancel-edit-account-name-button-visual">
+                              <Ionicons
+                                color={theme.colors.text.danger}
+                                name="close"
+                                size={18}
+                              />
+                            </View>
                           </Pressable>
                         </View>
                       </View>

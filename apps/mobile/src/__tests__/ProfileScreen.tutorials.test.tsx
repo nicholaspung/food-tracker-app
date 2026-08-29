@@ -219,6 +219,17 @@ function findRow(renderer: any, testID: string): any {
   return renderer.root.findByProps({ testID });
 }
 
+function flattenStyle(style: any): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (combined, entry) => ({ ...combined, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style && typeof style === 'object' ? style : {};
+}
+
 describe('ProfileScreen tutorials', () => {
   beforeEach(() => {
     mockNavigate.mockReset();
@@ -290,5 +301,48 @@ describe('ProfileScreen tutorials', () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith('NotificationPreferences');
+  });
+
+  it('keeps adjacent account-name actions in distinct 44-point targets', async () => {
+    const renderer = await renderProfileScreen();
+
+    await act(async () => {
+      findRow(renderer, 'profile-account-details-toggle').props.onPress();
+    });
+
+    const editButton = findRow(renderer, 'profile-edit-account-name-button');
+    expect(flattenStyle(editButton.props.style({ pressed: false }))).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(findRow(renderer, 'profile-edit-account-name-button-visual').props.style)).toMatchObject({
+      height: 36,
+      width: 36,
+    });
+
+    await act(async () => {
+      editButton.props.onPress();
+    });
+
+    const saveButton = renderer.root.findByProps({ accessibilityLabel: 'Save account name' });
+    const cancelButton = findRow(renderer, 'profile-cancel-edit-account-name-button');
+
+    expect(saveButton).not.toBe(cancelButton);
+    expect(flattenStyle(saveButton.props.style({ pressed: false }))).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(cancelButton.props.style({ pressed: false }))).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(findRow(renderer, 'profile-save-account-name-button-visual').props.style)).toMatchObject({
+      height: 36,
+      width: 36,
+    });
+    expect(flattenStyle(findRow(renderer, 'profile-cancel-edit-account-name-button-visual').props.style)).toMatchObject({
+      height: 36,
+      width: 36,
+    });
   });
 });

@@ -92,6 +92,12 @@ const useStyles = createThemedStyles((theme) => ({
   overlayText: {
     color: theme.colors.text.secondary,
   },
+  torchButtonTarget: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   torchButton: {
     alignItems: 'center',
     backgroundColor: theme.colors.background.surface,
@@ -357,16 +363,20 @@ export function AddFriendScreen({ navigation }: AddFriendScreenProps) {
                     accessibilityRole="button"
                     onPress={() => setIsTorchEnabled((currentValue) => !currentValue)}
                     style={({ pressed }) => [
-                      styles.torchButton,
-                      isTorchEnabled && styles.torchButtonActive,
+                      styles.torchButtonTarget,
                       pressed && { opacity: 0.7 },
                     ]}
                   >
-                    <Ionicons
-                      color={isTorchEnabled ? theme.colors.text.info : theme.colors.text.secondary}
-                      name={isTorchEnabled ? 'flashlight' : 'flashlight-outline'}
-                      size={18}
-                    />
+                    <View
+                      style={[styles.torchButton, isTorchEnabled && styles.torchButtonActive]}
+                      testID="add-friend-scanner-light-button-visual"
+                    >
+                      <Ionicons
+                        color={isTorchEnabled ? theme.colors.text.info : theme.colors.text.secondary}
+                        name={isTorchEnabled ? 'flashlight' : 'flashlight-outline'}
+                        size={18}
+                      />
+                    </View>
                   </Pressable>
                 </View>
                 <Text style={styles.overlayText}>

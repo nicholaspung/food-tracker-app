@@ -123,6 +123,12 @@ const useStyles = createThemedStyles((theme, sharePalette: ReturnType<typeof get
   headerSubtitle: {
     color: sharePalette.headerSubtitle,
   },
+  closeButtonTarget: {
+    alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   closeButton: {
     alignItems: 'center',
     backgroundColor: sharePalette.closeButtonBackground,
@@ -563,12 +569,15 @@ export function VisitShareCustomizationScreen({ navigation, route }: VisitShareC
         </View>
         <Pressable
           accessibilityLabel="Close share customization"
+          accessibilityRole="button"
           onPress={() => {
             navigation.goBack();
           }}
-          style={styles.closeButton}
+          style={styles.closeButtonTarget}
         >
-          <Ionicons color={sharePalette.closeIcon} name="close" size={22} />
+          <View style={styles.closeButton} testID="visit-share-close-button-visual">
+            <Ionicons color={sharePalette.closeIcon} name="close" size={22} />
+          </View>
         </Pressable>
       </View>
 

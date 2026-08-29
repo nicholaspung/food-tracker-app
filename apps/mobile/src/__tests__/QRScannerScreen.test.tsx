@@ -159,6 +159,17 @@ function renderScanner() {
   return renderer;
 }
 
+function flattenStyle(style: any): Record<string, unknown> {
+  if (Array.isArray(style)) {
+    return style.reduce<Record<string, unknown>>(
+      (combined, entry) => ({ ...combined, ...flattenStyle(entry) }),
+      {},
+    );
+  }
+
+  return style && typeof style === 'object' ? style : {};
+}
+
 describe('QRScannerScreen', () => {
   let sendFriendRequest: jest.Mock;
 
@@ -209,6 +220,30 @@ describe('QRScannerScreen', () => {
     expect(camera.props.facing).toBe('back');
     expect(camera.props.onBarcodeScanned).toEqual(expect.any(Function));
     expect(camera.props.zoom).toBe(0.08);
+  });
+
+  it('keeps the scanner-light action named and gives it a 44-point target', () => {
+    const renderer = renderScanner();
+    const torchButton = renderer.root.findByProps({ accessibilityLabel: 'Turn scanner light on' });
+
+    expect(torchButton.props.accessibilityRole).toBe('button');
+    expect(flattenStyle(torchButton.props.style({ pressed: false }))).toMatchObject({
+      height: 44,
+      width: 44,
+    });
+    expect(flattenStyle(renderer.root.findByProps({
+      testID: 'qr-scanner-light-button-visual',
+    }).props.style)).toMatchObject({
+      height: 36,
+      width: 36,
+    });
+
+    act(() => {
+      torchButton.props.onPress();
+    });
+
+    expect(renderer.root.findByProps({ accessibilityLabel: 'Turn scanner light off' })).toBeDefined();
+    expect(renderer.root.findByType('CameraView').props.enableTorch).toBe(true);
   });
 
   it('submits a valid QR invite through the offline-aware write path', async () => {

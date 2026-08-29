@@ -17,6 +17,12 @@ const useStyles = createThemedStyles((theme) => ({
   },
   backButton: {
     alignItems: 'center',
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
+  backButtonVisual: {
+    alignItems: 'center',
     backgroundColor: theme.colors.background.muted,
     borderColor: theme.colors.border.subtle,
     borderRadius: theme.radii.pill,
@@ -41,7 +47,9 @@ export function AuthTopBar({ onBackPress, backAccessibilityLabel = 'Back' }: Aut
           style={styles.backButton}
           testID="screen-back-button"
         >
-          <Ionicons color={theme.colors.text.primary} name="chevron-back" size={18} />
+          <View style={styles.backButtonVisual} testID="screen-back-button-visual">
+            <Ionicons color={theme.colors.text.primary} name="chevron-back" size={18} />
+          </View>
         </Pressable>
       ) : null}
       <AuthBrandMark size="large" />
