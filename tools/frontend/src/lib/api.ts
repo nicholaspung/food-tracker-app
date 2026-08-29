@@ -64,11 +64,6 @@ export async function listProjects(): Promise<ToolProject[]> {
   return data.items;
 }
 
-export async function listAssets(): Promise<ToolAsset[]> {
-  const data = await parseJsonResponse<{ items: ToolAsset[] }>(await fetch('/api/tools/assets'));
-  return data.items;
-}
-
 export async function createProject(payload: CreateProjectPayload): Promise<ToolProject> {
   const data = await parseJsonResponse<{ project: ToolProject }>(
     await fetch('/api/tools/projects', {
@@ -76,13 +71,6 @@ export async function createProject(payload: CreateProjectPayload): Promise<Tool
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(payload),
     }),
-  );
-  return data.project;
-}
-
-export async function getProject(projectId: string): Promise<ToolProject> {
-  const data = await parseJsonResponse<{ project: ToolProject }>(
-    await fetch(`/api/tools/projects/${encodeURIComponent(projectId)}`),
   );
   return data.project;
 }

@@ -8,7 +8,7 @@ import type {
   SourceVideo,
 } from '@/lib/types';
 
-export const defaultExportSettings: MixedGifExportSettings = {
+const defaultExportSettings: MixedGifExportSettings = {
   outputFilename: 'mixed.gif',
   defaultScreenshotDuration: 1.6,
   fps: 12,
