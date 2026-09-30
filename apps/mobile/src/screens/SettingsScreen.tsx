@@ -1,3 +1,4 @@
+import { FoodJournalExportSection } from "./settings/FoodJournalExportSection";
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
@@ -475,6 +476,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
               </View>
             </SectionCard>
 
+            <FoodJournalExportSection />
             <PageErrorToast errorMessage={errorMessage} title="Settings update failed" />
             <PageInfoToast message={successMessage} title="Settings saved" tone="success" />
           </>

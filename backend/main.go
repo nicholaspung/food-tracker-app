@@ -85,6 +85,7 @@ func main() {
 		handlers.RegisterUsageLimitHandlers(se, app)
 		handlers.RegisterMenuParsingHandlers(se, app)
 		handlers.RegisterPlacesHandlers(se, app)
+		handlers.RegisterFoodJournalExportHandlers(se, app)
 		handlers.RegisterPostHogProxyHandlers(se)
 		handlers.RegisterNotificationHandlers(se, app)
 		handlers.RegisterTastingSessionHandlers(se, app)
