@@ -4,10 +4,13 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - "apps/mobile/**"
+      # The website shares apps/mobile source; only native-only files are ignored.
+      - "apps/mobile/ios/**"
+      - "apps/mobile/android/**"
+      - "apps/mobile/eas.json"
       - "app.config.js"
       - "metro.config.js"
-      - ".github/workflows/mobile-*.yml"
+      - ".github/workflows/mobile-*"
   workflow_dispatch:
     inputs:
       environment:
