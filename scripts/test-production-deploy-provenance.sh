@@ -97,6 +97,7 @@ printf '%s\n' \
     '    while [ ! -e "$DEPLOY_PAUSE_RELEASE" ]; do sleep 0.05; done' \
     'fi' \
     'printf "%s\n%s\n%s\n%s\n" "$FOOD_TRACKER_DEPLOY_SHA" "$(git rev-parse HEAD)" "$(cat backend/pb_hooks/content.txt)" "$(cat "$FOOD_TRACKER_BACKEND_MOUNT_STAGING/live/backend/pb_hooks/content.txt")" > "$DEPLOY_RECORD"' \
+    'printf "%s\n" "${FOOD_TRACKER_POCKETBASE_USER:-missing}" >> "$DEPLOY_RECORD"' \
     'rm -rf "$FOOD_TRACKER_BACKEND_MOUNT_STAGING"' \
     > "$source_repo/scripts/deploy.sh"
 printf '%s\n' '/marketing_build*/' '/app_build*/' '/admin_build*/' > "$source_repo/.gitignore"
@@ -133,6 +134,7 @@ sed \
     -e "s|readonly PROVENANCE_FILE=.*|readonly PROVENANCE_FILE=\"$launcher_provenance\"|" \
     "$launcher_template" > "$launcher"
 chmod +x "$launcher"
+printf 'FOOD_TRACKER_POCKETBASE_USER=0:0\n' >> "$deploy_env"
 
 if printf '%s\n' "$sha_a" | SSH_ORIGINAL_COMMAND='' bash "$launcher" >/dev/null 2>&1; then
     fail "launcher accepted a Production deploy without provisioned backup storage"
@@ -148,6 +150,8 @@ live_mount_at_boundary=$(sed -n '3p' "$deploy_record")
 approved_mount_at_boundary=$(sed -n '4p' "$deploy_record")
 [ "$selected_approved" = "$sha_a" ] || fail "launcher did not pass approved commit A"
 [ "$selected_actual" = "$sha_a" ] || fail "launcher deployed mutable main instead of commit A"
+selected_container_user=$(sed -n '5p' "$deploy_record")
+[ "$selected_container_user" = "$(id -u):$(id -g)" ] || fail "launcher did not bind the container identity to its host account"
 [ "$live_mount_at_boundary" = "server-runtime-pb_hooks" ] || fail "launcher changed the live backend mount before the deploy boundary"
 [ "$approved_mount_at_boundary" = "server-runtime-pb_hooks" ] || fail "launcher did not preserve the untracked backend runtime mount"
 seeded_sha=$(awk -F= '$1 == "approved_sha" { print $2; exit }' "$launcher_provenance")

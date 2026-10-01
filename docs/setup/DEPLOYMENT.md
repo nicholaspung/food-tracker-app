@@ -146,6 +146,8 @@ Install the matching public key in the deploy account's `authorized_keys` with t
 restrict,command="/usr/local/sbin/food-tracker-production-deploy" ssh-ed25519 AAAA... production-deploy
 ```
 
+The Production launcher sets `FOOD_TRACKER_POCKETBASE_USER` to the deploy account's host UID:GID. Compose runs PocketBase with that identity so the startup script does not change bind-mounted files to the legacy UID 1000. Copies of the database and runtime directories must be owned by the Production account before startup. Deployments without this setting retain their legacy startup behavior.
+
 The workflow opens a session without supplying a remote command and sends exactly one validated full commit SHA on stdin. Before the first immutable deployment, the root-owned launcher records baseline provenance from the currently live checkout, static directories, and running PocketBase image; it refuses to continue if any baseline component is unavailable. It then rejects `SSH_ORIGINAL_COMMAND`, rejects missing, malformed, extra, or unreachable input, selects and verifies the exact approved commit, loads the host-only environment, and runs the Production deploy. Although the account needs Docker authority, a holder of this key can only trigger that fixed operation. Use no unrestricted key or password for this account.
 
 If an unreviewed or compromised action revision may have run:
