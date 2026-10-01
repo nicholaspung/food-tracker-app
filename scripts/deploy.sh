@@ -1067,11 +1067,15 @@ build_web_surfaces() {
 
     cd "$APP_DIR"
 
-    run_pnpm --filter @food-tracker/admin build
+    CI=true NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=512}" \
+        run_pnpm --filter @food-tracker/admin build 2>&1 | tee -a "$LOG_FILE"
     (
+        export CI=true
         export EXPO_NO_DOTENV=1
-        run_pnpm --filter @food-tracker/mobile web:build -- --clear
-    )
+        export NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=512}"
+        run_pnpm --filter @food-tracker/mobile exec expo export \
+            --platform web --output-dir web-dist --clear --max-workers 1
+    ) 2>&1 | tee -a "$LOG_FILE"
     verify_mobile_web_bundle_environment
 
     log "Web surfaces built ✓"

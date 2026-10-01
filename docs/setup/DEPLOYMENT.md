@@ -41,6 +41,8 @@ Migrate historical hosts to the separate Production checkout before enabling eit
 
 ## Deploying Updates
 
+Web builds run in CI mode with one Metro worker and a default 512 MiB V8 old-space heap limit per Node process, matching the tested settings for a 1 GiB VPS. Set `NODE_OPTIONS` in the protected host deployment environment to override the heap setting. Admin and Expo build output is appended to `logs/deploy-<environment>.log`; build failures stop deployment before static assets are replaced.
+
 ### Production
 
 ```bash

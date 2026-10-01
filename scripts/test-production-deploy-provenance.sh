@@ -479,4 +479,66 @@ for build_dir in marketing_build app_build admin_build; do
     [ "$rollback_content" = "rollback-$build_dir" ] || fail "unseeded Production rollback consumed ${build_dir}_old"
 done
 
+web_test_root="$test_root/web-build"
+mkdir -p "$web_test_root/app"
+cat > "$web_test_root/check.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export FOOD_TRACKER_APP_DIR="$WEB_TEST_ROOT/app"
+export FOOD_TRACKER_DEPLOY_SHA="$WEB_TEST_SHA"
+source "$WEB_TEST_DEPLOY_SCRIPT"
+LOG_FILE="$WEB_TEST_ROOT/build.log"
+step() { return 0; }
+log() { return 0; }
+run_pnpm() {
+    printf '%s\n' "$*" >> "$WEB_TEST_ROOT/commands"
+    [ "${CI:-}" = true ] || exit 90
+    [ "${NODE_OPTIONS:-}" = "$WEB_TEST_NODE_OPTIONS" ] || exit 91
+    if [ "$*" = '--filter @food-tracker/admin build' ]; then
+        echo "admin build output"
+        [ "$WEB_TEST_FAILURE" != admin ] || return 17
+    elif [ "$*" = '--filter @food-tracker/mobile exec expo export --platform web --output-dir web-dist --clear --max-workers 1' ]; then
+        [ "${EXPO_NO_DOTENV:-}" = 1 ] || exit 92
+        echo "Expo build output" >&2
+        [ "$WEB_TEST_FAILURE" != expo ] || return 23
+    else
+        exit 93
+    fi
+}
+verify_mobile_web_bundle_environment() {
+    touch "$WEB_TEST_ROOT/verified"
+}
+build_web_surfaces
+EOF
+
+export WEB_TEST_ROOT="$web_test_root"
+export WEB_TEST_SHA="$rollback_sha"
+export WEB_TEST_DEPLOY_SCRIPT="$DEPLOY_SCRIPT"
+export WEB_TEST_FAILURE=none
+export WEB_TEST_NODE_OPTIONS=--max-old-space-size=512
+env -u NODE_OPTIONS bash "$web_test_root/check.sh"
+test -f "$web_test_root/verified" || fail "successful web build was not verified"
+require_text "$web_test_root/build.log" 'admin build output'
+require_text "$web_test_root/build.log" 'Expo build output'
+
+export WEB_TEST_NODE_OPTIONS=--max-old-space-size=768
+NODE_OPTIONS="$WEB_TEST_NODE_OPTIONS" bash "$web_test_root/check.sh"
+
+for failed_build in admin expo; do
+    rm -f "$web_test_root/commands" "$web_test_root/verified"
+    export WEB_TEST_FAILURE="$failed_build"
+    if NODE_OPTIONS="$WEB_TEST_NODE_OPTIONS" bash "$web_test_root/check.sh"; then
+        fail "$failed_build build failure was swallowed by logging"
+    else
+        failure_status=$?
+    fi
+    if [ "$failed_build" = admin ]; then
+        [ "$failure_status" -eq 17 ] || fail "admin build failure status was lost"
+        [ "$(wc -l < "$web_test_root/commands" | tr -d ' ')" -eq 1 ] || fail "Expo ran after admin build failure"
+    else
+        [ "$failure_status" -eq 23 ] || fail "Expo build failure status was lost"
+    fi
+    test ! -f "$web_test_root/verified" || fail "failed web build was verified"
+done
+
 echo "Production deployment provenance checks passed."
