@@ -21,6 +21,8 @@ require_text() {
 
 require_text "$WORKFLOW" 'APPROVED_SHA: ${{ github.sha }}'
 require_text "$WORKFLOW" "printf '%s\\n' \"\$APPROVED_SHA\" | timeout 30m ssh"
+require_text "$WORKFLOW" '-o ServerAliveInterval=30'
+require_text "$WORKFLOW" '-o ServerAliveCountMax=6'
 
 [ "$(rg -Fc -- '      - ".gitignore"' "$POLICY_WORKFLOW")" -eq 2 ] || fail ".gitignore changes do not trigger the deployment policy"
 
