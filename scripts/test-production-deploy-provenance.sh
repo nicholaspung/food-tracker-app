@@ -541,4 +541,43 @@ for failed_build in admin expo; do
     test ! -f "$web_test_root/verified" || fail "failed web build was verified"
 done
 
+preflight_test_root="$test_root/preflight"
+mkdir -p "$preflight_test_root/app"
+cat > "$preflight_test_root/check.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export FOOD_TRACKER_APP_DIR="$PREFLIGHT_TEST_ROOT/app"
+source "$PREFLIGHT_TEST_DEPLOY_SCRIPT"
+LOCK_FILE="$PREFLIGHT_TEST_ROOT/deploy.lock"
+trap 'rm -f "$LOCK_FILE"' EXIT
+warn() { return 0; }
+step() { return 0; }
+log() { return 0; }
+error() { echo "$*" >&2; }
+configure_package_manager() { return 0; }
+run_pnpm() { echo '11.5.3'; }
+systemctl() { return 0; }
+df() { printf 'Filesystem Blocks Used Available Capacity Mounted\nfixture 4000000 1000000 3000000 25%% /\n'; }
+recover_interrupted_caddy_cutover() { return 0; }
+ensure_live_caddy_config() { return 0; }
+docker() {
+    case "$*" in
+        'compose version') return 0 ;;
+        'inspect --format {{.State.Running}} pocketbase')
+            printf '%s\n' "$PREFLIGHT_TEST_RUNNING"
+            ;;
+        *) echo "Unexpected Docker command: $*" >&2; exit 92 ;;
+    esac
+}
+preflight_checks
+EOF
+export PREFLIGHT_TEST_ROOT="$preflight_test_root"
+export PREFLIGHT_TEST_DEPLOY_SCRIPT="$DEPLOY_SCRIPT"
+PREFLIGHT_TEST_RUNNING=true bash "$preflight_test_root/check.sh"
+for running_state in false ''; do
+    if PREFLIGHT_TEST_RUNNING="$running_state" bash "$preflight_test_root/check.sh"; then
+        fail "Production preflight accepted a stopped or missing exact container"
+    fi
+done
+
 echo "Production deployment provenance checks passed."

@@ -900,7 +900,9 @@ preflight_checks() {
     recover_interrupted_caddy_cutover
     ensure_live_caddy_config
 
-    if ! docker ps | grep -q "$POCKETBASE_CONTAINER"; then
+    local container_running
+    container_running=$(docker inspect --format '{{.State.Running}}' "$POCKETBASE_CONTAINER" 2>/dev/null || true)
+    if [ "$container_running" != "true" ]; then
         if [ "$ENVIRONMENT" = "production" ]; then
             error "Production PocketBase must be running before deployment so the verified baseline remains active"
             exit 1
