@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/apis"
@@ -14,9 +15,27 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+const foodJournalPartMediaLimit = 224 * 1024 * 1024
+
+var (
+	errFoodJournalChanged          = errors.New("export source changed")
+	errFoodJournalPartMissing      = errors.New("export part does not exist")
+	errFoodJournalPhotoTooLarge    = errors.New("export photo exceeds 30 MiB")
+	errFoodJournalMetadataTooLarge = errors.New("export metadata exceeds importer limits")
+)
+
+type foodJournalExportPart struct {
+	number           int
+	count            int
+	mediaLimit       int64
+	expectedSnapshot string
+	snapshot         string
+}
 
 // This portable personal-history format excludes social, bill, list and moderation data.
 func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
@@ -33,6 +52,17 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return apis.NewBadRequestError("Choose a valid timezone", nil)
 		}
+		part := foodJournalExportPart{number: 1, mediaLimit: foodJournalPartMediaLimit}
+		if value := e.Request.URL.Query().Get("part"); value != "" {
+			part.number, err = strconv.Atoi(value)
+			if err != nil || part.number < 1 {
+				return apis.NewBadRequestError("Choose a valid export part", nil)
+			}
+		}
+		part.expectedSnapshot = e.Request.URL.Query().Get("snapshot")
+		if part.number > 1 && part.expectedSnapshot == "" {
+			return apis.NewBadRequestError("Download part 1 before requesting another part", nil)
+		}
 		temp, err := os.CreateTemp("", "food-journal-*.zip")
 		if err != nil {
 			return apis.NewApiError(500, "Unable to prepare export", nil)
@@ -40,14 +70,38 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 		defer os.Remove(temp.Name())
 		defer temp.Close()
 		// Build fully before returning so missing photos cannot produce a successful-looking partial ZIP.
-		if err := writeFoodJournalExport(e.Request.Context(), app, e.Auth.Id, temp, location); err != nil {
+		if err := writeFoodJournalExport(e.Request.Context(), app, e.Auth.Id, temp, location, &part); err != nil {
+			switch {
+			case errors.Is(err, errFoodJournalChanged):
+				return apis.NewApiError(409, "Your records changed during export. Start a new export and download every part again.", nil)
+			case errors.Is(err, errFoodJournalPartMissing):
+				return apis.NewBadRequestError("This export part does not exist", nil)
+			case errors.Is(err, errFoodJournalPhotoTooLarge):
+				return apis.NewBadRequestError("A photo exceeds the importer's 30 MiB limit", nil)
+			case errors.Is(err, errFoodJournalMetadataTooLarge):
+				return apis.NewApiError(413, "Record metadata exceeds the supported import size", nil)
+			}
 			return apis.NewApiError(500, "Export failed. Check that your photos are available and try again.", nil)
+		}
+		info, err := temp.Stat()
+		if err != nil {
+			return err
+		}
+		if info.Size() > 256*1024*1024 {
+			return apis.NewApiError(413, "Record metadata exceeds the supported import size", nil)
 		}
 		if _, err := temp.Seek(0, 0); err != nil {
 			return err
 		}
 		e.Response.Header().Set("Content-Type", "application/zip")
-		e.Response.Header().Set("Content-Disposition", `attachment; filename="food-journal.zip"`)
+		filename := "food-journal.zip"
+		if part.count > 1 {
+			filename = fmt.Sprintf("food-journal-part-%d-of-%d.zip", part.number, part.count)
+		}
+		e.Response.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+		e.Response.Header().Set("X-Food-Journal-Parts", strconv.Itoa(part.count))
+		e.Response.Header().Set("X-Food-Journal-Snapshot", part.snapshot)
+		e.Response.Header().Set("Access-Control-Expose-Headers", "X-Food-Journal-Parts, X-Food-Journal-Snapshot")
 		e.Response.Header().Set("X-Content-Type-Options", "nosniff")
 		e.Response.WriteHeader(http.StatusOK)
 		_, err = io.Copy(e.Response, temp)
@@ -55,7 +109,7 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 	})
 }
 
-func writeFoodJournalExport(ctx context.Context, app core.App, user string, output io.Writer, location *time.Location) error {
+func writeFoodJournalExport(ctx context.Context, app core.App, user string, output io.Writer, location *time.Location, part *foodJournalExportPart) error {
 	load := func(collection string) ([]*core.Record, error) {
 		return app.FindRecordsByFilter(collection, "user = {:user}", "created,id", 0, 0, dbx.Params{"user": user})
 	}
@@ -193,7 +247,15 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		return err
 	}
 	defer fs.Close()
-	total := int64(0)
+	// Every part repeats the catalog and record metadata; source identities remain
+	// stable so importing later parts reuses records and only adds their photos.
+	fingerprint := sha256.New()
+	stateEncoder := json.NewEncoder(fingerprint)
+	if err := stateEncoder.Encode([]any{app.Settings().Meta.AppURL, user, location.String(), part.mediaLimit, rows}); err != nil {
+		return err
+	}
+	currentPart := 1
+	partBytes := int64(0)
 	seen := map[string]bool{}
 	addPhoto := func(photo *core.Record, parent, item, kind string) error {
 		if parent == "" {
@@ -211,17 +273,13 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 			return err
 		}
 		defer reader.Close()
-		// Bound the export to the importer limits; an oversized export fails explicitly.
+		// Partition original media while keeping each photo below the importer limit.
 		bytes, err := io.ReadAll(io.LimitReader(reader, 30*1024*1024+1))
 		if err != nil {
 			return err
 		}
 		if len(bytes) > 30*1024*1024 {
-			return fmt.Errorf("photo too large")
-		}
-		total += int64(len(bytes))
-		if total > 240*1024*1024 {
-			return fmt.Errorf("export exceeds supported archive size")
+			return errFoodJournalPhotoTooLarge
 		}
 		hash := sha256.Sum256(bytes)
 		checksum := hex.EncodeToString(hash[:])
@@ -230,8 +288,20 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 			return nil
 		}
 		seen[dedupe] = true
+		if partBytes > 0 && partBytes+int64(len(bytes)) > part.mediaLimit {
+			currentPart++
+			partBytes = 0
+		}
+		partBytes += int64(len(bytes))
 		id := kind + "-" + photo.Id
 		path := "media/" + id
+		row := map[string]any{"id": id, "record": parent, "item": item, "path": path, "sha256": checksum, "caption": photo.GetString("caption"), "capturedAt": photo.GetString("capturedAt")}
+		if err := stateEncoder.Encode(row); err != nil {
+			return err
+		}
+		if currentPart != part.number {
+			return nil
+		}
 		entry, err := writer.CreateHeader(&zip.FileHeader{Name: path, Method: zip.Store})
 		if err != nil {
 			return err
@@ -239,7 +309,7 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		if _, err := entry.Write(bytes); err != nil {
 			return err
 		}
-		rows["photos"] = append(rows["photos"], map[string]any{"id": id, "record": parent, "item": item, "path": path, "sha256": checksum, "caption": photo.GetString("caption"), "capturedAt": photo.GetString("capturedAt")})
+		rows["photos"] = append(rows["photos"], row)
 		return nil
 	}
 	for _, p := range visitPhotos {
@@ -261,16 +331,31 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 			return err
 		}
 	}
+	part.count = currentPart
+	part.snapshot = hex.EncodeToString(fingerprint.Sum(nil))
+	if part.expectedSnapshot != "" && part.expectedSnapshot != part.snapshot {
+		return errFoodJournalChanged
+	}
+	if part.number > part.count {
+		return errFoodJournalPartMissing
+	}
 	datasetHash := sha256.Sum256([]byte("food-tracker:" + app.Settings().Meta.AppURL + ":" + user))
 	manifest := map[string]any{"format": "food-journal", "version": 1, "dataset": hex.EncodeToString(datasetHash[:]), "exportedAt": time.Now().UTC().Format(time.RFC3339)}
 	for key, value := range rows {
 		manifest[key] = value
 	}
+	manifestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+	if len(manifestBytes) > 25*1024*1024 {
+		return errFoodJournalMetadataTooLarge
+	}
 	metadata, err := writer.Create("food-journal.json")
 	if err != nil {
 		return err
 	}
-	if err := json.NewEncoder(metadata).Encode(manifest); err != nil {
+	if _, err := metadata.Write(manifestBytes); err != nil {
 		return err
 	}
 	return writer.Close()

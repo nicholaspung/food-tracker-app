@@ -184,6 +184,10 @@ jest.mock('../components/shared', () => ({
     mockReact.createElement('VisibilityOptionSelector', props),
 }));
 
+jest.mock('../screens/settings/FoodJournalExportSection', () => ({
+  FoodJournalExportSection: () => mockReact.createElement('FoodJournalExportSection'),
+}));
+
 jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
 }));
