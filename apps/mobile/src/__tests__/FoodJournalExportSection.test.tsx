@@ -21,7 +21,9 @@ jest.mock('../components/shared/PageErrorToast', () => ({
   PageErrorToast: (props: Record<string, unknown>) => mockReact.createElement('PageErrorToast', props),
 }));
 
-test('downloads numbered parts with the same snapshot and keeps failed parts retryable', async () => {
+test.each(['journal', 'food-products'] as const)('%s downloads numbered parts with the same snapshot and keeps failed parts retryable', async (scope) => {
+  const name = scope === 'food-products' ? 'Food Products' : 'Food Journal';
+  const filename = scope === 'food-products' ? 'food-products' : 'food-journal';
   jest.useFakeTimers();
   const snapshot = 'a'.repeat(64);
   const anchor = { href: '', download: '', click: jest.fn() };
@@ -48,9 +50,9 @@ test('downloads numbered parts with the same snapshot and keeps failed parts ret
     });
   };
   try {
-    await act(async () => { renderer = create(<FoodJournalExportSection />); });
-    await press('Download Food Journal ZIP');
-    expect(anchor.download).toBe('food-journal-part-1-of-2.zip');
+    await act(async () => { renderer = create(<FoodJournalExportSection scope={scope} />); });
+    await press(`Download ${name} ZIP`);
+    expect(anchor.download).toBe(`${filename}-part-1-of-2.zip`);
     expect(anchor.click).toHaveBeenCalledTimes(1);
     expect(new URL(fetchMock.mock.calls[0][0]).searchParams.has('snapshot')).toBe(false);
 
@@ -67,12 +69,13 @@ test('downloads numbered parts with the same snapshot and keeps failed parts ret
     await press('Download part 2 of 2');
     const query = new URL(fetchMock.mock.calls[2][0]).searchParams;
     expect(query.get('part')).toBe('2');
+    expect(query.get('scope')).toBe(scope);
     expect(query.get('snapshot')).toBe(snapshot);
-    expect(anchor.download).toBe('food-journal-part-2-of-2.zip');
+    expect(anchor.download).toBe(`${filename}-part-2-of-2.zip`);
     expect(anchor.click).toHaveBeenCalledTimes(2);
 
     await press('Start a new export');
-    await press('Download Food Journal ZIP');
+    await press(`Download ${name} ZIP`);
     expect(new URL(fetchMock.mock.calls[3][0]).searchParams.has('snapshot')).toBe(false);
   } finally {
     await act(async () => { renderer?.unmount(); });

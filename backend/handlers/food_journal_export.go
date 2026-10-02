@@ -30,6 +30,7 @@ var (
 )
 
 type foodJournalExportPart struct {
+	productsOnly     bool
 	number           int
 	count            int
 	mediaLimit       int64
@@ -52,7 +53,11 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 		if err != nil {
 			return apis.NewBadRequestError("Choose a valid timezone", nil)
 		}
-		part := foodJournalExportPart{number: 1, mediaLimit: foodJournalPartMediaLimit}
+		scope := e.Request.URL.Query().Get("scope")
+		if scope != "" && scope != "journal" && scope != "food-products" {
+			return apis.NewBadRequestError("Choose a valid export type", nil)
+		}
+		part := foodJournalExportPart{number: 1, mediaLimit: foodJournalPartMediaLimit, productsOnly: scope == "food-products"}
 		if value := e.Request.URL.Query().Get("part"); value != "" {
 			part.number, err = strconv.Atoi(value)
 			if err != nil || part.number < 1 {
@@ -94,9 +99,13 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 			return err
 		}
 		e.Response.Header().Set("Content-Type", "application/zip")
-		filename := "food-journal.zip"
+		baseName := "food-journal"
+		if part.productsOnly {
+			baseName = "food-products"
+		}
+		filename := baseName + ".zip"
 		if part.count > 1 {
-			filename = fmt.Sprintf("food-journal-part-%d-of-%d.zip", part.number, part.count)
+			filename = fmt.Sprintf("%s-part-%d-of-%d.zip", baseName, part.number, part.count)
 		}
 		e.Response.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 		e.Response.Header().Set("X-Food-Journal-Parts", strconv.Itoa(part.count))
@@ -111,6 +120,9 @@ func RegisterFoodJournalExportHandlers(se *core.ServeEvent, app core.App) {
 
 func writeFoodJournalExport(ctx context.Context, app core.App, user string, output io.Writer, location *time.Location, part *foodJournalExportPart) error {
 	load := func(collection string) ([]*core.Record, error) {
+		if part.productsOnly && collection != "food_items" && collection != "visit_photos" {
+			return nil, nil
+		}
 		return app.FindRecordsByFilter(collection, "user = {:user}", "created,id", 0, 0, dbx.Params{"user": user})
 	}
 	visits, err := load("visits")
@@ -133,6 +145,9 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 	if err != nil {
 		return err
 	}
+	if part.productsOnly {
+		visits = nil
+	}
 	rows := map[string][]map[string]any{"restaurants": {}, "menuItems": {}, "records": {}, "items": {}, "photos": {}}
 	restaurants := map[string]bool{}
 	menus := map[string]bool{}
@@ -154,16 +169,52 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		if _, err := time.Parse("2006-01-02", day); err != nil {
 			return fmt.Errorf("visit has no valid calendar day")
 		}
-		row := map[string]any{"id": v.Id, "restaurant": restaurant, "date": day, "notes": v.GetString("notes"), "method": "manual", "sourceCreated": v.GetString("created"), "sourceUpdated": v.GetString("updated")}
+		row := map[string]any{"id": v.Id, "restaurant": restaurant, "date": day, "notes": v.GetString("notes"), "method": "manual", "type": "visit", "sourceCreated": v.GetString("created"), "sourceUpdated": v.GetString("updated")}
 		rows["records"] = append(rows["records"], row)
 		records[v.Id] = row
 	}
 	for _, item := range foodItems {
 		parent := item.GetString("visit")
-		if records[parent] == nil || item.GetString("itemType") == "food-product" {
+		if isFoodProductRecord(item) {
+			if !part.productsOnly {
+				continue
+			}
+			parent = "food-product-" + item.Id
+			tracked := item.GetString("itemDate")
+			if tracked == "" {
+				tracked = item.GetString("created")
+			}
+			day := noteExportDay(tracked, location)
+			if day == "" {
+				return fmt.Errorf("food product has no valid tracked date")
+			}
+			restaurant := ""
+			if visitID := item.GetString("visit"); visitID != "" {
+				visit, err := app.FindRecordById("visits", visitID)
+				if err != nil {
+					return err
+				}
+				if visit.GetString("user") == user {
+					restaurant = visit.GetString("restaurant")
+				}
+			}
+			if restaurant != "" {
+				restaurants[restaurant] = true
+			}
+			row := map[string]any{"id": parent, "restaurant": restaurant, "date": day, "notes": item.GetString("notes"), "method": "manual", "type": "food-product", "category": item.GetString("itemCategory"), "locationText": item.GetString("location_text"), "sourceCreated": item.GetString("created"), "sourceUpdated": item.GetString("updated")}
+			lat, lon := item.GetFloat("latitude"), item.GetFloat("longitude")
+			if (lat != 0 || lon != 0) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 {
+				row["coordinates"] = map[string]float64{"latitude": lat, "longitude": lon}
+			}
+			records[parent] = row
+			rows["records"] = append(rows["records"], row)
+		} else if part.productsOnly || records[parent] == nil {
 			continue
 		}
 		menuID := item.GetString("menuItem")
+		if part.productsOnly {
+			menuID = ""
+		}
 		if menuID != "" {
 			menu, err := app.FindRecordById("menu_items", menuID)
 			if err != nil {
@@ -179,10 +230,17 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		if value := item.GetInt("rating"); value >= 1 && value <= 5 {
 			rating = fmt.Sprint(value)
 		}
-		rows["items"] = append(rows["items"], map[string]any{"id": item.Id, "record": parent, "menuItem": menuID, "name": item.GetString("name"), "description": item.GetString("description"), "notes": item.GetString("notes"), "rating": rating})
+		itemNotes := item.GetString("notes")
+		if part.productsOnly {
+			itemNotes = ""
+		} // Already preserved on the product record.
+		rows["items"] = append(rows["items"], map[string]any{"id": item.Id, "record": parent, "menuItem": menuID, "name": item.GetString("name"), "description": item.GetString("description"), "notes": itemNotes, "rating": rating})
 		items[item.Id] = parent
 	}
 	for _, note := range notes {
+		if part.productsOnly {
+			continue
+		}
 		parent := note.GetString("usedInVisit")
 		if records[parent] != nil {
 			original := records[parent]["notes"].(string)
@@ -204,7 +262,7 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 			if location := note.GetString("location_text"); location != "" {
 				content = strings.TrimSpace(content + "\n\nLocation: " + location)
 			}
-			row := map[string]any{"id": parent, "restaurant": restaurant, "date": noteExportDay(created, location), "notes": content, "method": "notes", "sourceCreated": created, "sourceUpdated": note.GetString("updated")}
+			row := map[string]any{"id": parent, "restaurant": restaurant, "date": noteExportDay(created, location), "notes": content, "method": "notes", "type": "note", "sourceCreated": created, "sourceUpdated": note.GetString("updated")}
 			rows["records"] = append(rows["records"], row)
 			records[parent] = row
 		}
@@ -251,7 +309,7 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 	// stable so importing later parts reuses records and only adds their photos.
 	fingerprint := sha256.New()
 	stateEncoder := json.NewEncoder(fingerprint)
-	if err := stateEncoder.Encode([]any{app.Settings().Meta.AppURL, user, location.String(), part.mediaLimit, rows}); err != nil {
+	if err := stateEncoder.Encode([]any{app.Settings().Meta.AppURL, user, location.String(), part.mediaLimit, part.productsOnly, rows}); err != nil {
 		return err
 	}
 	currentPart := 1

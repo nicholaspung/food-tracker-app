@@ -5,7 +5,10 @@ import { PageErrorToast } from "../../components/shared/PageErrorToast";
 import { pb } from "../../lib/pocketbase";
 import { Button } from "../../ui/Button";
 
-export function FoodJournalExportSection() {
+export function FoodJournalExportSection({ scope = "journal" }: { scope?: "journal" | "food-products" }) {
+  const productsOnly = scope === "food-products";
+  const exportName = productsOnly ? "Food Products" : "Food Journal";
+  const fileName = productsOnly ? "food-products" : "food-journal";
   const [busyPart, setBusyPart] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<{
@@ -25,7 +28,7 @@ export function FoodJournalExportSection() {
     try {
       if (!pb.authStore.isValid || !account)
         throw new Error("Sign in before exporting your records.");
-      const query = new URLSearchParams({ timezone, part: String(part) });
+      const query = new URLSearchParams({ timezone, part: String(part), scope });
       if (currentPlan) query.set("snapshot", currentPlan.snapshot);
       const response = await fetch(
         `${pb.baseURL}/api/food-journal/export?${query}`,
@@ -59,8 +62,8 @@ export function FoodJournalExportSection() {
         anchor.href = url;
         anchor.download =
           parts > 1
-            ? `food-journal-part-${part}-of-${parts}.zip`
-            : "food-journal.zip";
+            ? `${fileName}-part-${part}-of-${parts}.zip`
+            : `${fileName}.zip`;
         anchor.click();
         setPlan({ parts, snapshot, timezone });
         setDownloaded((previous) =>
@@ -77,9 +80,11 @@ export function FoodJournalExportSection() {
   }
   return (
     <SectionCard
-      title="Export Food Journal"
+      title={`Export ${exportName}`}
       description={plan && plan.parts > 1
         ? `Your export has ${plan.parts} ZIP parts. Download every part, then import each file into Food Journal in Productivity. Existing imported records are reused. The ZIPs contain readable personal data; store them privately.`
+        : productsOnly
+        ? "Download your food products, ratings, categories, locations, notes, and photos for import into Productivity Food Journal. Large libraries use numbered ZIP parts. The ZIPs contain readable personal data; store them privately. Available on the website only."
         : "Download your visits, notes, and photos for import into Productivity. Large libraries use numbered ZIP parts. The ZIPs contain readable personal data; store them privately. Available on the website only."}
     >
       {plan && plan.parts > 1 ? (
@@ -107,7 +112,7 @@ export function FoodJournalExportSection() {
         </>
       ) : (
         <Button
-          label="Download Food Journal ZIP"
+          label={`Download ${exportName} ZIP`}
           loading={busyPart !== null}
           onPress={() => {
             setPlan(null);

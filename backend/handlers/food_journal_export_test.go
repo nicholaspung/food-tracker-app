@@ -282,3 +282,119 @@ func TestFoodJournalExportOwnRecordsAndLocalDays(t *testing.T) {
 		}
 	}
 }
+
+func TestFoodJournalProductsExportScopeOwnershipMetadataAndPhotos(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	users, _ := app.FindCollectionByNameOrId("users")
+	user := core.NewRecord(users)
+	user.SetEmail("product-export@example.invalid")
+	user.Set("defaultRestaurantVisibility", "private")
+	user.Set("defaultVisitVisibility", "private")
+	user.SetPassword("synthetic-password123")
+	user.SetVerified(true)
+	if err := app.Save(user); err != nil {
+		t.Fatal(err)
+	}
+	other := core.NewRecord(users)
+	other.SetEmail("other-product-export@example.invalid")
+	other.Set("defaultRestaurantVisibility", "private")
+	other.Set("defaultVisitVisibility", "private")
+	other.SetPassword("synthetic-password123")
+	other.SetVerified(true)
+	if err := app.Save(other); err != nil {
+		t.Fatal(err)
+	}
+	create := func(collection string, values map[string]any) *core.Record {
+		c, err := app.FindCollectionByNameOrId(collection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := core.NewRecord(c)
+		for k, v := range values {
+			r.Set(k, v)
+		}
+		if err := app.Save(r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	product := create("food_items", map[string]any{"user": user.Id, "name": "Chocolate", "itemType": "food-product", "rating": 5, "notes": "Good", "itemCategory": "Snacks", "location_text": "Market", "itemDate": "2026-09-30 02:00:00.000Z", "latitude": 37, "longitude": -122})
+	create("food_items", map[string]any{"user": other.Id, "name": "Other owner's product", "itemType": "food-product", "rating": 4})
+	restaurant := create("restaurants", map[string]any{"name": "Restaurant", "location": "Branch", "visibility": "private"})
+	visit := create("visits", map[string]any{"user": user.Id, "restaurant": restaurant.Id, "visitLocalDate": "2026-09-29", "visitDate": "2026-09-30 02:00:00.000Z", "visibility": "private"})
+	create("food_items", map[string]any{"user": user.Id, "visit": visit.Id, "name": "Visit dish", "itemType": "visit-item", "rating": 4})
+	create("notes", map[string]any{"user": user.Id, "content": "Separate note", "status": "draft"})
+	png, _ := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aV1sAAAAASUVORK5CYII=")
+	file, _ := filesystem.NewFileFromBytes(png, "synthetic.png")
+	photo := create("visit_photos", map[string]any{"user": user.Id, "food_item": product.Id, "photo": file, "caption": "Product photo"})
+	router, _ := apis.NewRouter(app)
+	RegisterFoodJournalExportHandlers(&core.ServeEvent{App: app, Router: router}, app)
+	handler, _ := router.BuildMux()
+	token, _ := user.NewAuthToken()
+	download := func(query, auth string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/food-journal/export?timezone=America%2FLos_Angeles"+query, nil)
+		req.Header.Set("Authorization", auth)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		return response
+	}
+	if download("&scope=food-products", "").Code != 401 {
+		t.Fatal("unauthenticated export accepted")
+	}
+	if download("&scope=unknown", token).Code != 400 {
+		t.Fatal("unknown export scope accepted")
+	}
+	response := download("&scope=food-products", token)
+	if response.Code != 200 {
+		t.Fatalf("export: %d %s", response.Code, response.Body)
+	}
+	if !strings.Contains(response.Header().Get("Content-Disposition"), "food-products.zip") {
+		t.Fatal("wrong download filename")
+	}
+	reader, err := zip.NewReader(bytes.NewReader(response.Body.Bytes()), int64(response.Body.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		Dataset                string `json:"dataset"`
+		Restaurants, MenuItems []map[string]any
+		Records, Items, Photos []map[string]any
+	}
+	for _, entry := range reader.File {
+		if entry.Name != "food-journal.json" {
+			continue
+		}
+		r, _ := entry.Open()
+		raw, _ := io.ReadAll(r)
+		r.Close()
+		if err := json.Unmarshal(raw, &manifest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(manifest.Records) != 1 || len(manifest.Items) != 1 || len(manifest.Photos) != 1 || len(manifest.Restaurants) != 0 || len(manifest.MenuItems) != 0 {
+		t.Fatalf("wrong product export counts: %+v", manifest)
+	}
+	record := manifest.Records[0]
+	for field, expected := range map[string]string{"id": "food-product-" + product.Id, "type": "food-product", "category": "Snacks", "locationText": "Market", "notes": "Good", "date": "2026-09-29"} {
+		if record[field] != expected {
+			t.Fatalf("lost %s: %v", field, record[field])
+		}
+	}
+	if manifest.Items[0]["record"] != record["id"] || manifest.Items[0]["rating"] != "5" {
+		t.Fatal("wrong product item")
+	}
+	if manifest.Photos[0]["record"] != record["id"] || manifest.Photos[0]["item"] != product.Id || manifest.Photos[0]["id"] != "visit-photo-"+photo.Id {
+		t.Fatal("lost product photo associations")
+	}
+	if record["coordinates"].(map[string]any)["latitude"] != float64(37) {
+		t.Fatal("lost product coordinates")
+	}
+	retry := download("&scope=food-products&snapshot="+response.Header().Get("X-Food-Journal-Snapshot"), token)
+	if retry.Code != 200 || retry.Header().Get("X-Food-Journal-Snapshot") != response.Header().Get("X-Food-Journal-Snapshot") {
+		t.Fatal("unstable product snapshot")
+	}
+	wrongScope := download("&snapshot="+response.Header().Get("X-Food-Journal-Snapshot"), token)
+	if wrongScope.Code != 409 {
+		t.Fatal("product snapshot accepted for journal export")
+	}
+}
