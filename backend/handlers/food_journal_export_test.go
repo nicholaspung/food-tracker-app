@@ -50,7 +50,7 @@ func TestFoodJournalExportOwnRecordsAndLocalDays(t *testing.T) {
 		}
 		return r
 	}
-	restaurant := makeRecord("restaurants", map[string]any{"name": "Synthetic restaurant", "location": "Synthetic branch", "visibility": "public"})
+	restaurant := makeRecord("restaurants", map[string]any{"name": "Synthetic restaurant", "location": "Synthetic branch", "visibility": "public", "latitude": 37.77, "longitude": -122.43})
 	visit := makeRecord("visits", map[string]any{"user": user.Id, "restaurant": restaurant.Id, "visitDate": "2026-09-30 02:00:00.000Z", "visitLocalDate": "2026-09-29", "visibility": "private"})
 	dish := makeRecord("food_items", map[string]any{"user": user.Id, "visit": visit.Id, "name": "Synthetic dish", "rating": 4, "itemType": "visit-item"})
 	otherVisit := makeRecord("visits", map[string]any{"user": other.Id, "restaurant": restaurant.Id, "visitDate": "2026-09-30 02:00:00.000Z", "visitLocalDate": "2026-09-29", "visibility": "friends"})
@@ -96,6 +96,19 @@ func TestFoodJournalExportOwnRecordsAndLocalDays(t *testing.T) {
 		if err := json.Unmarshal(raw, &result); err != nil {
 			t.Fatal(err)
 		}
+		var catalog struct {
+			Restaurants []struct {
+				ID          string             `json:"id"`
+				Coordinates map[string]float64 `json:"coordinates"`
+			} `json:"restaurants"`
+		}
+		if err := json.Unmarshal(raw, &catalog); err != nil {
+			t.Fatal(err)
+		}
+		if len(catalog.Restaurants) != 1 || catalog.Restaurants[0].ID != restaurant.Id || catalog.Restaurants[0].Coordinates["latitude"] != 37.77 || catalog.Restaurants[0].Coordinates["longitude"] != -122.43 {
+			t.Fatal("saved restaurant coordinates missing")
+		}
+
 		if result.Format != "food-journal" || len(result.Records) != 1 || len(result.Items) != 1 {
 			t.Fatalf("wrong export counts: %s", raw)
 		}

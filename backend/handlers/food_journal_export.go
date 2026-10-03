@@ -281,15 +281,21 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		if err != nil {
 			return err
 		}
-		// Places results are not copied into the portable personal catalog. Keep the place ID;
-		// a user's historical restaurant label remains necessary to interpret their own visit.
+		// Keep the place identity and saved coordinates for portable map pins;
+		// omit other Places metadata from the personal catalog.
 		location := r.GetString("location")
 		cuisine := r.GetString("cuisineType")
 		if r.GetBool("isGooglePlace") {
 			location = ""
 			cuisine = ""
 		}
-		rows["restaurants"] = append(rows["restaurants"], map[string]any{"id": id, "name": r.GetString("name"), "location": location, "cuisine": cuisine, "placeId": r.GetString("placeId")})
+		row := map[string]any{"id": id, "name": r.GetString("name"), "location": location, "cuisine": cuisine, "placeId": r.GetString("placeId")}
+		// Portable saved locations let the destination map work without another lookup.
+		lat, lon := r.GetFloat("latitude"), r.GetFloat("longitude")
+		if (lat != 0 || lon != 0) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 {
+			row["coordinates"] = map[string]float64{"latitude": lat, "longitude": lon}
+		}
+		rows["restaurants"] = append(rows["restaurants"], row)
 	}
 	for _, id := range sortedKeys(menus) {
 		m, err := app.FindRecordById("menu_items", id)
