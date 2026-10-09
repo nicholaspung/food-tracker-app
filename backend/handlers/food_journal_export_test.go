@@ -20,6 +20,95 @@ import (
 	"time"
 )
 
+func TestFoodJournalExportIncludesCreatedCatalogWithoutVisits(t *testing.T) {
+	app := testutil.NewTestApp(t)
+	create := func(collection string, values map[string]any) *core.Record {
+		c, err := app.FindCollectionByNameOrId(collection)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := core.NewRecord(c)
+		r.Load(values)
+		if collection == "users" {
+			r.SetPassword("test-password123")
+			r.Set("defaultRestaurantVisibility", "private")
+			r.Set("defaultVisitVisibility", "private")
+		}
+		if collection == "menu_items" {
+			r.Set("visibility", "public")
+		}
+		if err := app.Save(r); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	owner := create("users", map[string]any{"email": "catalog-owner@example.test"})
+	other := create("users", map[string]any{"email": "catalog-other@example.test"})
+	owned := create("restaurants", map[string]any{"createdBy": owner.Id, "name": "Created restaurant", "location": "Branch", "visibility": "private"})
+	empty := create("restaurants", map[string]any{"createdBy": owner.Id, "name": "Empty restaurant", "location": "Branch", "visibility": "private"})
+	shared := create("restaurants", map[string]any{"createdBy": other.Id, "name": "Shared restaurant", "location": "Branch", "visibility": "public"})
+	create("restaurants", map[string]any{"createdBy": other.Id, "name": "Unrelated restaurant", "location": "Branch", "visibility": "public"})
+	standalone := create("menu_items", map[string]any{"createdBy": owner.Id, "restaurant": owned.Id, "name": "Standalone dish", "description": "Created without a visit"})
+	sharedMenu := create("menu_items", map[string]any{"createdBy": owner.Id, "restaurant": shared.Id, "name": "My shared-restaurant dish"})
+	create("menu_items", map[string]any{"createdBy": other.Id, "restaurant": owned.Id, "name": "Someone else's dish"})
+	readExport := func(productsOnly bool) map[string][]map[string]any {
+		t.Helper()
+		var output bytes.Buffer
+		if err := writeFoodJournalExport(context.Background(), app, owner.Id, &output, time.UTC, &foodJournalExportPart{number: 1, mediaLimit: foodJournalPartMediaLimit, productsOnly: productsOnly}); err != nil {
+			t.Fatal(err)
+		}
+		archive, err := zip.NewReader(bytes.NewReader(output.Bytes()), int64(output.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, file := range archive.File {
+			if file.Name != "food-journal.json" {
+				continue
+			}
+			r, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			var manifest struct {
+				Restaurants, MenuItems, Records, Items []map[string]any
+			}
+			if err := json.NewDecoder(r).Decode(&manifest); err != nil {
+				t.Fatal(err)
+			}
+			return map[string][]map[string]any{"restaurants": manifest.Restaurants, "menuItems": manifest.MenuItems, "records": manifest.Records, "items": manifest.Items}
+		}
+		t.Fatal("missing manifest")
+		return nil
+	}
+	journal := readExport(false)
+	for collection, expected := range map[string][]string{"restaurants": {owned.Id, empty.Id, shared.Id}, "menuItems": {standalone.Id, sharedMenu.Id}, "records": {}, "items": {}} {
+		if len(journal[collection]) != len(expected) {
+			t.Fatalf("%s: got %d records, want %d", collection, len(journal[collection]), len(expected))
+		}
+		for _, id := range expected {
+			found := false
+			for _, row := range journal[collection] {
+				found = found || row["id"] == id
+			}
+			if !found {
+				t.Fatalf("%s: missing %s", collection, id)
+			}
+		}
+	}
+	for collection, rows := range readExport(true) {
+		if len(rows) != 0 {
+			t.Fatalf("standalone catalog leaked into product export: %s", collection)
+		}
+	}
+	visit := create("visits", map[string]any{"user": owner.Id, "restaurant": owned.Id, "visitDate": "2026-09-30 02:00:00.000Z", "visitLocalDate": "2026-09-29", "visibility": "private"})
+	create("food_items", map[string]any{"user": owner.Id, "visit": visit.Id, "menuItem": standalone.Id, "name": "Standalone dish", "itemType": "visit-item", "rating": 4})
+	journal = readExport(false)
+	if len(journal["restaurants"]) != 3 || len(journal["menuItems"]) != 2 || len(journal["records"]) != 1 || len(journal["items"]) != 1 {
+		t.Fatal("referencing created catalog entries must not duplicate them")
+	}
+}
+
 func TestFoodJournalExportOwnRecordsAndLocalDays(t *testing.T) {
 	app := testutil.NewTestApp(t)
 	users, _ := app.FindCollectionByNameOrId("users")

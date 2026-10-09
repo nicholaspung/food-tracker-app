@@ -1,5 +1,5 @@
 # Stage 1: Build the Go application
-FROM golang:1.25.13-alpine AS builder
+FROM golang:1.26.9-alpine AS builder
 
 # Install build dependencies including C++ compiler for goheif/libde265
 RUN apk add --no-cache git gcc g++ musl-dev libheif-dev libde265-dev

@@ -268,6 +268,29 @@ func writeFoodJournalExport(ctx context.Context, app core.App, user string, outp
 		}
 		noteRecords[note.Id] = parent
 	}
+	if !part.productsOnly {
+		// Standalone catalog entries are user-authored data too. Keep creator
+		// filtering separate from the shared catalog's visit dependencies.
+		for _, collection := range []string{"restaurants", "menu_items"} {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			created, err := app.FindRecordsByFilter(collection, "createdBy = {:user}", "id", 0, 0, dbx.Params{"user": user})
+			if err != nil {
+				return err
+			}
+			for _, record := range created {
+				if collection == "restaurants" {
+					restaurants[record.Id] = true
+				} else {
+					menus[record.Id] = true
+					if restaurant := record.GetString("restaurant"); restaurant != "" {
+						restaurants[restaurant] = true
+					}
+				}
+			}
+		}
+	}
 	sortedKeys := func(values map[string]bool) []string {
 		keys := []string{}
 		for key := range values {
