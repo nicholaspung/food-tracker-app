@@ -47,5 +47,10 @@ jobs:
       - name: Validate action references
         run: ruby scripts/check-github-action-pins.rb
 
+      - name: Install deployment test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep
+
       - name: Test Production deployment provenance
         run: bash scripts/test-production-deploy-provenance.sh
