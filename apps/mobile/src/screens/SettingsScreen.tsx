@@ -477,6 +477,7 @@ export function SettingsScreen({ navigation }: SettingsScreenProps) {
             </SectionCard>
 
             <FoodJournalExportSection />
+            <FoodJournalExportSection scope="food-products" />
             <PageErrorToast errorMessage={errorMessage} title="Settings update failed" />
             <PageInfoToast message={successMessage} title="Settings saved" tone="success" />
           </>

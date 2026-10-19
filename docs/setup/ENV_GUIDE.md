@@ -140,7 +140,7 @@ The repo currently uses two GitHub environments:
 
 ### GitHub `beta` Environment Secrets
 
-Required for [.github/workflows/deploy.yml](/Users/developer/programming/food-tracker-app/.github/workflows/deploy.yml) beta deploys:
+Required for [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml) beta deploys:
 
 ```bash
 VPS_HOST=
@@ -156,7 +156,7 @@ FOOD_TRACKER_IOS_TEAM_ID=
 FOOD_TRACKER_ANDROID_SHA256_CERT_FINGERPRINTS=
 ```
 
-Required for [.github/workflows/mobile-preview.yml](/Users/developer/programming/food-tracker-app/.github/workflows/mobile-preview.yml):
+Required for [.github/workflows/mobile-preview.yml](../../.github/workflows/mobile-preview.yml.disabled):
 
 ```bash
 EXPO_TOKEN=
@@ -164,7 +164,7 @@ EXPO_TOKEN=
 
 ### GitHub `production` Environment Secrets
 
-Required for production deploys in [.github/workflows/deploy.yml](/Users/developer/programming/food-tracker-app/.github/workflows/deploy.yml):
+Required for production deploys in [.github/workflows/deploy.yml](../../.github/workflows/deploy.yml):
 
 ```bash
 VPS_HOST=
@@ -212,7 +212,7 @@ Use the preview package fingerprint for the `beta` environment if the preview ap
 
 Expo and EAS have two distinct concerns in this repo:
 
-- EAS build profiles in [apps/mobile/eas.json](/Users/developer/programming/food-tracker-app/apps/mobile/eas.json)
+- EAS build profiles in [apps/mobile/eas.json](../../apps/mobile/eas.json)
 - Expo environment variables used by OTA updates, especially `eas update --environment ...`
 
 Build profiles such as `preview` and `production-preview` are for binary builds. OTA updates should target channels plus EAS environments, not build profiles. In this repo that means:
@@ -237,7 +237,7 @@ The checked-in `eas.json` already sets:
 
 ### Expo Environment `preview`
 
-This should represent the beta mobile environment. It is especially important for OTA updates because [.github/workflows/mobile-preview.yml](/Users/developer/programming/food-tracker-app/.github/workflows/mobile-preview.yml) runs:
+This should represent the beta mobile environment. It is especially important for OTA updates because [.github/workflows/mobile-preview.yml](../../.github/workflows/mobile-preview.yml.disabled) runs:
 
 ```bash
 pnpm exec eas update --channel preview --environment preview
@@ -403,7 +403,7 @@ Environment-aware Expo helper commands:
 - `pnpm mobile:web:beta`
 - `pnpm mobile:web:production`
 
-These run [scripts/mobile-expo.sh](/Users/developer/programming/food-tracker-app/scripts/mobile-expo.sh), which:
+These run [scripts/mobile-expo.sh](../../scripts/mobile-expo.sh), which:
 
 - loads the shared environment mapping from `scripts/app-env.sh`
 - sets `EXPO_NO_DOTENV=1`

@@ -11,8 +11,17 @@ node_modules/
 
 # Environment files
 .env
-frontend/.env
-apps/mobile/.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+credentials.json
+service-account*.json
 apps/mobile/google-service-account.json
 
 # Local tool caches and scratch output

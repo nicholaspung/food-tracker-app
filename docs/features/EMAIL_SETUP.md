@@ -470,7 +470,7 @@ Priority: 20
 
 Type: TXT
 Host: @
-Value: forward-email=admin:22228236+nicholaspung@users.noreply.github.com
+Value: forward-email=admin:you@example.com
 ```
 
 This uses **ForwardEmail.net** (free) to forward emails to your Gmail.
@@ -655,7 +655,7 @@ app.OnServe().BindFunc(func(se *core.ServeEvent) error {
 				Address: e.App.Settings().Meta.SenderAddress,
 				Name:    e.App.Settings().Meta.SenderName,
 			},
-			To:      []mail.Address{{Address: "22228236+nicholaspung@users.noreply.github.com"}},
+			To:      []mail.Address{{Address: "you@example.com"}},
 			Subject: "Test Email",
 			HTML:    "<h1>Email configuration working!</h1>",
 		}
@@ -736,7 +736,7 @@ curl http://localhost:8090/test-email
    ```
    Type: TXT
    Host: _dmarc
-   Value: v=DMARC1; p=none; rua=mailto:22228236+nicholaspung@users.noreply.github.com
+   Value: v=DMARC1; p=none; rua=mailto:you@example.com
    ```
 
 ---

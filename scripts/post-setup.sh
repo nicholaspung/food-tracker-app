@@ -22,7 +22,7 @@ LOCK_FILE="/tmp/food-tracker-post-setup.lock"
 
 # Default values (pre-configured for yummyrecs.com)
 DOMAIN="${DOMAIN:-yummyrecs.com}"
-EMAIL="${EMAIL:-22228236+nicholaspung@users.noreply.github.com}"
+EMAIL="${EMAIL:-support@yummyrecs.com}"
 
 #######################
 # LOGGING
