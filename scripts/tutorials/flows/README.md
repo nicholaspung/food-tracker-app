@@ -1,5 +1,7 @@
 # iOS Tutorial Recording
 
+Use isolated synthetic accounts and a demo-only photo library. Never record live invitation codes, personal visits, or real account details. Keep raw recordings local and review every frame before publishing exported media.
+
 Run the interactive recorder from the repo root:
 
 ```bash
