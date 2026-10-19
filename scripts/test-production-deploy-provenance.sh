@@ -556,14 +556,28 @@ warn() { return 0; }
 step() { return 0; }
 log() { return 0; }
 error() { echo "$*" >&2; }
+LOG_FILE="$PREFLIGHT_TEST_ROOT/deploy.log"
 configure_package_manager() { return 0; }
 run_pnpm() { echo '11.5.3'; }
 systemctl() { return 0; }
-df() { printf 'Filesystem Blocks Used Available Capacity Mounted\nfixture 4000000 1000000 3000000 25%% /\n'; }
+df() {
+    local available=6291456
+    printf '%s\n' "$*" >> "$PREFLIGHT_TEST_ROOT/df-calls"
+    if [ "${2:-}" = "${PREFLIGHT_TEST_LOW_PATH:-}" ]; then
+        if [ ! -f "$PREFLIGHT_TEST_ROOT/pruned" ] || [ "${PREFLIGHT_TEST_RECLAIM:-true}" = false ]; then
+            available=2097152
+        fi
+    fi
+    printf 'Filesystem Blocks Used Available Capacity Mounted\nfixture 10000000 1000000 %s 10%% /\n' "$available"
+}
 recover_interrupted_caddy_cutover() { return 0; }
 ensure_live_caddy_config() { return 0; }
 docker() {
     case "$*" in
+        'info --format {{.DockerRootDir}}') printf '%s\n' "$PREFLIGHT_TEST_ROOT/docker" ;;
+        'builder prune --all --force --keep-storage 1GB')
+            touch "$PREFLIGHT_TEST_ROOT/pruned"
+            ;;
         'compose version') return 0 ;;
         'inspect --format {{.State.Running}} pocketbase')
             printf '%s\n' "$PREFLIGHT_TEST_RUNNING"
@@ -571,15 +585,33 @@ docker() {
         *) echo "Unexpected Docker command: $*" >&2; exit 92 ;;
     esac
 }
-preflight_checks
+if [ "${PREFLIGHT_TEST_DISK_ONLY:-false}" = true ]; then
+    ensure_build_disk_space
+else
+    preflight_checks
+fi
 EOF
 export PREFLIGHT_TEST_ROOT="$preflight_test_root"
 export PREFLIGHT_TEST_DEPLOY_SCRIPT="$DEPLOY_SCRIPT"
 PREFLIGHT_TEST_RUNNING=true bash "$preflight_test_root/check.sh"
+test ! -f "$preflight_test_root/pruned" || fail "ample disk space unnecessarily pruned cache"
+require_text "$preflight_test_root/df-calls" "-Pk $preflight_test_root/app"
+require_text "$preflight_test_root/df-calls" "-Pk $preflight_test_root/docker"
 for running_state in false ''; do
     if PREFLIGHT_TEST_RUNNING="$running_state" bash "$preflight_test_root/check.sh"; then
         fail "Production preflight accepted a stopped or missing exact container"
     fi
 done
+
+for storage_path in "$preflight_test_root/app" "$preflight_test_root/docker"; do
+    rm -f "$preflight_test_root/pruned"
+    PREFLIGHT_TEST_DISK_ONLY=true PREFLIGHT_TEST_LOW_PATH="$storage_path" bash "$preflight_test_root/check.sh"
+    test -f "$preflight_test_root/pruned" || fail "disk pressure did not reclaim unused build cache"
+done
+rm -f "$preflight_test_root/pruned"
+if PREFLIGHT_TEST_DISK_ONLY=true PREFLIGHT_TEST_LOW_PATH="$preflight_test_root/docker" \
+    PREFLIGHT_TEST_RECLAIM=false bash "$preflight_test_root/check.sh"; then
+    fail "deployment accepted insufficient disk space after cache cleanup"
+fi
 
 echo "Production deployment provenance checks passed."

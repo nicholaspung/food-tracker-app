@@ -4,7 +4,24 @@ node_modules
 
 # Environment files (sensitive)
 .env
-frontend/.env
+.env.*
+!.env.example
+
+# Private local state and issue tracker
+.expo/
+.expo-shared/
+.scratch/
+
+# Credentials and signing material
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.mobileprovision
+credentials.json
+service-account*.json
 
 # Build artifacts
 frontend_build/

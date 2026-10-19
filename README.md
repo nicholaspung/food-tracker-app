@@ -102,3 +102,9 @@ bash scripts/post-setup.sh
 printf '%s\n' "$(git rev-parse HEAD)" | sudo -u production-deploy /usr/local/sbin/food-tracker-production-deploy
 bash scripts/deploy.sh beta
 ```
+
+## Private Local Files
+
+Environment files, signing credentials, Expo device state, and the local `.scratch/` issue tracker stay outside Git. Copy configuration from the committed `.env.example` templates and keep real values in ignored files or deployment secrets.
+
+Before publishing new tutorial recordings, use isolated demo accounts, non-live invitation codes, and a demo-only photo library. Review every frame and remove image metadata before committing media.
