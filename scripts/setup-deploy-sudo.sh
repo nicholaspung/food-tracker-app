@@ -444,6 +444,7 @@ if [ "$actual_sha" != "$approved_sha" ]; then
     exit 1
 fi
 
+export FOOD_TRACKER_POCKETBASE_USER="$(id -u):$(id -g)"
 export FOOD_TRACKER_DEPLOY_SHA="$approved_sha"
 export FOOD_TRACKER_DEPLOY_LOCK_OWNER="$$"
 export FOOD_TRACKER_APP_DIR="$APP_DIRECTORY"

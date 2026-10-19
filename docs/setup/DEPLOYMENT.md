@@ -41,6 +41,10 @@ Migrate historical hosts to the separate Production checkout before enabling eit
 
 ## Deploying Updates
 
+Web builds run in CI mode with one Metro worker and a default 512 MiB V8 old-space heap limit per Node process, matching the tested settings for a 1 GiB VPS. Set `NODE_OPTIONS` in the protected host deployment environment to override the heap setting. Admin and Expo build output is appended to `logs/deploy-<environment>.log`; build failures stop deployment before static assets are replaced.
+
+Deployment requires at least 4 GiB free on both the checkout and Docker storage filesystems. This reserve is checked during preflight and again after backups, dependency installation, and web builds, before publishing static assets. Under disk pressure, the script prunes only unused Docker build cache, retaining up to 1 GB of cache, then rechecks available space. It preserves Docker images needed for rollback, containers, volumes, and application backups. If space remains insufficient, free more disk space or expand the VPS disk before retrying.
+
 ### Production
 
 ```bash
@@ -145,6 +149,8 @@ Install the matching public key in the deploy account's `authorized_keys` with t
 ```text
 restrict,command="/usr/local/sbin/food-tracker-production-deploy" ssh-ed25519 AAAA... production-deploy
 ```
+
+The Production launcher sets `FOOD_TRACKER_POCKETBASE_USER` to the deploy account's host UID:GID. Compose runs PocketBase with that identity so the startup script does not change bind-mounted files to the legacy UID 1000. Copies of the database and runtime directories must be owned by the Production account before startup. Deployments without this setting retain their legacy startup behavior.
 
 The workflow opens a session without supplying a remote command and sends exactly one validated full commit SHA on stdin. Before the first immutable deployment, the root-owned launcher records baseline provenance from the currently live checkout, static directories, and running PocketBase image; it refuses to continue if any baseline component is unavailable. It then rejects `SSH_ORIGINAL_COMMAND`, rejects missing, malformed, extra, or unreachable input, selects and verifies the exact approved commit, loads the host-only environment, and runs the Production deploy. Although the account needs Docker authority, a holder of this key can only trigger that fixed operation. Use no unrestricted key or password for this account.
 

@@ -6,6 +6,10 @@ services:
     image: food-tracker-pocketbase:latest
     container_name: pocketbase
     restart: unless-stopped
+    # The production launcher supplies its host UID:GID so bind mounts stay
+    # readable and writable by the deployment account. Preserve legacy startup
+    # when no account has been provisioned.
+    user: "${FOOD_TRACKER_POCKETBASE_USER:-0:0}"
     ports:
       - "127.0.0.1:8090:8090" # Only accessible from localhost
     volumes:
@@ -43,8 +47,8 @@ services:
       retries: 3 # Retry 3 times before marking unhealthy
       start_period: 10s # Wait 10 seconds before first check
 
-    # Security: Entrypoint drops to non-root after fixing permissions
-    # user: "1000:1000"  # Commented out to allow entrypoint to fix permissions
+    # With an explicit non-root user, the entrypoint skips ownership changes.
+    # Unconfigured legacy deployments still drop to UID 1000 after startup.
 
     # Logging configuration (prevent disk fill)
     logging:

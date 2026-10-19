@@ -21,6 +21,8 @@ require_text() {
 
 require_text "$WORKFLOW" 'APPROVED_SHA: ${{ github.sha }}'
 require_text "$WORKFLOW" "printf '%s\\n' \"\$APPROVED_SHA\" | timeout 30m ssh"
+require_text "$WORKFLOW" '-o ServerAliveInterval=30'
+require_text "$WORKFLOW" '-o ServerAliveCountMax=6'
 
 [ "$(rg -Fc -- '      - ".gitignore"' "$POLICY_WORKFLOW")" -eq 2 ] || fail ".gitignore changes do not trigger the deployment policy"
 
@@ -97,6 +99,7 @@ printf '%s\n' \
     '    while [ ! -e "$DEPLOY_PAUSE_RELEASE" ]; do sleep 0.05; done' \
     'fi' \
     'printf "%s\n%s\n%s\n%s\n" "$FOOD_TRACKER_DEPLOY_SHA" "$(git rev-parse HEAD)" "$(cat backend/pb_hooks/content.txt)" "$(cat "$FOOD_TRACKER_BACKEND_MOUNT_STAGING/live/backend/pb_hooks/content.txt")" > "$DEPLOY_RECORD"' \
+    'printf "%s\n" "${FOOD_TRACKER_POCKETBASE_USER:-missing}" >> "$DEPLOY_RECORD"' \
     'rm -rf "$FOOD_TRACKER_BACKEND_MOUNT_STAGING"' \
     > "$source_repo/scripts/deploy.sh"
 printf '%s\n' '/marketing_build*/' '/app_build*/' '/admin_build*/' > "$source_repo/.gitignore"
@@ -133,6 +136,7 @@ sed \
     -e "s|readonly PROVENANCE_FILE=.*|readonly PROVENANCE_FILE=\"$launcher_provenance\"|" \
     "$launcher_template" > "$launcher"
 chmod +x "$launcher"
+printf 'FOOD_TRACKER_POCKETBASE_USER=0:0\n' >> "$deploy_env"
 
 if printf '%s\n' "$sha_a" | SSH_ORIGINAL_COMMAND='' bash "$launcher" >/dev/null 2>&1; then
     fail "launcher accepted a Production deploy without provisioned backup storage"
@@ -148,6 +152,8 @@ live_mount_at_boundary=$(sed -n '3p' "$deploy_record")
 approved_mount_at_boundary=$(sed -n '4p' "$deploy_record")
 [ "$selected_approved" = "$sha_a" ] || fail "launcher did not pass approved commit A"
 [ "$selected_actual" = "$sha_a" ] || fail "launcher deployed mutable main instead of commit A"
+selected_container_user=$(sed -n '5p' "$deploy_record")
+[ "$selected_container_user" = "$(id -u):$(id -g)" ] || fail "launcher did not bind the container identity to its host account"
 [ "$live_mount_at_boundary" = "server-runtime-pb_hooks" ] || fail "launcher changed the live backend mount before the deploy boundary"
 [ "$approved_mount_at_boundary" = "server-runtime-pb_hooks" ] || fail "launcher did not preserve the untracked backend runtime mount"
 seeded_sha=$(awk -F= '$1 == "approved_sha" { print $2; exit }' "$launcher_provenance")
@@ -474,5 +480,138 @@ for build_dir in marketing_build app_build admin_build; do
     [ "$current_content" = "current-$build_dir" ] || fail "unseeded Production rollback mutated $build_dir"
     [ "$rollback_content" = "rollback-$build_dir" ] || fail "unseeded Production rollback consumed ${build_dir}_old"
 done
+
+web_test_root="$test_root/web-build"
+mkdir -p "$web_test_root/app"
+cat > "$web_test_root/check.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export FOOD_TRACKER_APP_DIR="$WEB_TEST_ROOT/app"
+export FOOD_TRACKER_DEPLOY_SHA="$WEB_TEST_SHA"
+source "$WEB_TEST_DEPLOY_SCRIPT"
+LOG_FILE="$WEB_TEST_ROOT/build.log"
+step() { return 0; }
+log() { return 0; }
+run_pnpm() {
+    printf '%s\n' "$*" >> "$WEB_TEST_ROOT/commands"
+    [ "${CI:-}" = true ] || exit 90
+    [ "${NODE_OPTIONS:-}" = "$WEB_TEST_NODE_OPTIONS" ] || exit 91
+    if [ "$*" = '--filter @food-tracker/admin build' ]; then
+        echo "admin build output"
+        [ "$WEB_TEST_FAILURE" != admin ] || return 17
+    elif [ "$*" = '--filter @food-tracker/mobile exec expo export --platform web --output-dir web-dist --clear --max-workers 1' ]; then
+        [ "${EXPO_NO_DOTENV:-}" = 1 ] || exit 92
+        echo "Expo build output" >&2
+        [ "$WEB_TEST_FAILURE" != expo ] || return 23
+    else
+        exit 93
+    fi
+}
+verify_mobile_web_bundle_environment() {
+    touch "$WEB_TEST_ROOT/verified"
+}
+build_web_surfaces
+EOF
+
+export WEB_TEST_ROOT="$web_test_root"
+export WEB_TEST_SHA="$rollback_sha"
+export WEB_TEST_DEPLOY_SCRIPT="$DEPLOY_SCRIPT"
+export WEB_TEST_FAILURE=none
+export WEB_TEST_NODE_OPTIONS=--max-old-space-size=512
+env -u NODE_OPTIONS bash "$web_test_root/check.sh"
+test -f "$web_test_root/verified" || fail "successful web build was not verified"
+require_text "$web_test_root/build.log" 'admin build output'
+require_text "$web_test_root/build.log" 'Expo build output'
+
+export WEB_TEST_NODE_OPTIONS=--max-old-space-size=768
+NODE_OPTIONS="$WEB_TEST_NODE_OPTIONS" bash "$web_test_root/check.sh"
+
+for failed_build in admin expo; do
+    rm -f "$web_test_root/commands" "$web_test_root/verified"
+    export WEB_TEST_FAILURE="$failed_build"
+    if NODE_OPTIONS="$WEB_TEST_NODE_OPTIONS" bash "$web_test_root/check.sh"; then
+        fail "$failed_build build failure was swallowed by logging"
+    else
+        failure_status=$?
+    fi
+    if [ "$failed_build" = admin ]; then
+        [ "$failure_status" -eq 17 ] || fail "admin build failure status was lost"
+        [ "$(wc -l < "$web_test_root/commands" | tr -d ' ')" -eq 1 ] || fail "Expo ran after admin build failure"
+    else
+        [ "$failure_status" -eq 23 ] || fail "Expo build failure status was lost"
+    fi
+    test ! -f "$web_test_root/verified" || fail "failed web build was verified"
+done
+
+preflight_test_root="$test_root/preflight"
+mkdir -p "$preflight_test_root/app"
+cat > "$preflight_test_root/check.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+export FOOD_TRACKER_APP_DIR="$PREFLIGHT_TEST_ROOT/app"
+source "$PREFLIGHT_TEST_DEPLOY_SCRIPT"
+LOCK_FILE="$PREFLIGHT_TEST_ROOT/deploy.lock"
+trap 'rm -f "$LOCK_FILE"' EXIT
+warn() { return 0; }
+step() { return 0; }
+log() { return 0; }
+error() { echo "$*" >&2; }
+LOG_FILE="$PREFLIGHT_TEST_ROOT/deploy.log"
+configure_package_manager() { return 0; }
+run_pnpm() { echo '11.5.3'; }
+systemctl() { return 0; }
+df() {
+    local available=6291456
+    printf '%s\n' "$*" >> "$PREFLIGHT_TEST_ROOT/df-calls"
+    if [ "${2:-}" = "${PREFLIGHT_TEST_LOW_PATH:-}" ]; then
+        if [ ! -f "$PREFLIGHT_TEST_ROOT/pruned" ] || [ "${PREFLIGHT_TEST_RECLAIM:-true}" = false ]; then
+            available=2097152
+        fi
+    fi
+    printf 'Filesystem Blocks Used Available Capacity Mounted\nfixture 10000000 1000000 %s 10%% /\n' "$available"
+}
+recover_interrupted_caddy_cutover() { return 0; }
+ensure_live_caddy_config() { return 0; }
+docker() {
+    case "$*" in
+        'info --format {{.DockerRootDir}}') printf '%s\n' "$PREFLIGHT_TEST_ROOT/docker" ;;
+        'builder prune --all --force --keep-storage 1GB')
+            touch "$PREFLIGHT_TEST_ROOT/pruned"
+            ;;
+        'compose version') return 0 ;;
+        'inspect --format {{.State.Running}} pocketbase')
+            printf '%s\n' "$PREFLIGHT_TEST_RUNNING"
+            ;;
+        *) echo "Unexpected Docker command: $*" >&2; exit 92 ;;
+    esac
+}
+if [ "${PREFLIGHT_TEST_DISK_ONLY:-false}" = true ]; then
+    ensure_build_disk_space
+else
+    preflight_checks
+fi
+EOF
+export PREFLIGHT_TEST_ROOT="$preflight_test_root"
+export PREFLIGHT_TEST_DEPLOY_SCRIPT="$DEPLOY_SCRIPT"
+PREFLIGHT_TEST_RUNNING=true bash "$preflight_test_root/check.sh"
+test ! -f "$preflight_test_root/pruned" || fail "ample disk space unnecessarily pruned cache"
+require_text "$preflight_test_root/df-calls" "-Pk $preflight_test_root/app"
+require_text "$preflight_test_root/df-calls" "-Pk $preflight_test_root/docker"
+for running_state in false ''; do
+    if PREFLIGHT_TEST_RUNNING="$running_state" bash "$preflight_test_root/check.sh"; then
+        fail "Production preflight accepted a stopped or missing exact container"
+    fi
+done
+
+for storage_path in "$preflight_test_root/app" "$preflight_test_root/docker"; do
+    rm -f "$preflight_test_root/pruned"
+    PREFLIGHT_TEST_DISK_ONLY=true PREFLIGHT_TEST_LOW_PATH="$storage_path" bash "$preflight_test_root/check.sh"
+    test -f "$preflight_test_root/pruned" || fail "disk pressure did not reclaim unused build cache"
+done
+rm -f "$preflight_test_root/pruned"
+if PREFLIGHT_TEST_DISK_ONLY=true PREFLIGHT_TEST_LOW_PATH="$preflight_test_root/docker" \
+    PREFLIGHT_TEST_RECLAIM=false bash "$preflight_test_root/check.sh"; then
+    fail "deployment accepted insufficient disk space after cache cleanup"
+fi
 
 echo "Production deployment provenance checks passed."
