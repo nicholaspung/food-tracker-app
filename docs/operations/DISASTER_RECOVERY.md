@@ -69,9 +69,12 @@ df -h
 du -sh /opt/food-tracker-app/* | sort -h
 du -sh /opt/food-tracker-app-production/* | sort -h
 du -sh /opt/food-tracker-backups/* | sort -h
-docker system prune -af
+docker system df
+docker builder prune --all --force --keep-storage 1GB
 sudo journalctl --vacuum-time=7d
 ```
+
+Recheck available space after cache cleanup; deployment requires at least 4 GiB free on the checkout and Docker storage filesystems. Avoid broad image pruning: Production rollback verifies and reuses the prior immutable image, which must remain available locally. Preserve database files, volumes, and verified backups; expand the VPS disk if cache cleanup is insufficient.
 
 If workspace dependencies were installed on the server manually, they can also be removed:
 

@@ -27,7 +27,7 @@ class GitHubActionPinPolicyTest < Minitest::Test
             - uses: docker://example/image@sha256:#{DIGEST}
     YAML
 
-    assert_empty violations_for("valid.yml" => workflow)
+    assert_empty violations_for({"valid.yml" => workflow})
   end
 
   def test_rejects_mutable_and_computed_step_references
@@ -46,7 +46,7 @@ class GitHubActionPinPolicyTest < Minitest::Test
             - uses: ./../outside-workspace
     YAML
 
-    violations = violations_for("mutable.yaml" => workflow)
+    violations = violations_for({"mutable.yaml" => workflow})
 
     assert_equal 8, violations.length
     assert violations.any? { |violation| violation.include?("@v1") }
@@ -66,7 +66,7 @@ class GitHubActionPinPolicyTest < Minitest::Test
           uses: example/workflows/.github/workflows/build.yml@main
     YAML
 
-    violations = violations_for("nested/reusable.yml" => workflow)
+    violations = violations_for({"nested/reusable.yml" => workflow})
 
     assert_equal 1, violations.length
     assert_includes violations.first, "jobs.reusable.uses"
@@ -82,7 +82,7 @@ class GitHubActionPinPolicyTest < Minitest::Test
             - uses: example/action@main
     YAML
 
-    violations = violations_for(".hidden.yml" => workflow)
+    violations = violations_for({".hidden.yml" => workflow})
 
     assert_equal 1, violations.length
     assert_includes violations.first, ".hidden.yml"

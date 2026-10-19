@@ -853,6 +853,33 @@ rollback() {
     error "Rollback complete. System restored to previous state."
 }
 
+ensure_build_disk_space() {
+    # Go compilation needs room for downloaded modules, build cache, and
+    # temporary objects. Check Docker's filesystem as well as the checkout.
+    local docker_root
+    docker_root=$(docker info --format '{{.DockerRootDir}}')
+    if [ -z "$docker_root" ]; then
+        error "Could not determine Docker storage directory"
+        exit 1
+    fi
+
+    local storage_path
+    local available_space_kb
+    for storage_path in "$APP_DIR" "$docker_root"; do
+        available_space_kb=$(df -Pk "$storage_path" | awk 'NR==2 {print $4}')
+        if [ "$available_space_kb" -lt 4194304 ]; then
+            log "Low disk space at $storage_path; reclaiming unused Docker build cache..."
+            docker builder prune --all --force --keep-storage 1GB 2>&1 | tee -a "$LOG_FILE"
+            available_space_kb=$(df -Pk "$storage_path" | awk 'NR==2 {print $4}')
+        fi
+        if [ "$available_space_kb" -lt 4194304 ]; then
+            error "Insufficient build disk space at $storage_path. Required: 4096MB, Available: $((available_space_kb / 1024))MB. Free disk space or expand the VPS disk before retrying."
+            exit 1
+        fi
+        log "Build disk space at $storage_path: $((available_space_kb / 1024))MB available ✓"
+    done
+}
+
 preflight_checks() {
     step "Running pre-flight checks..."
 
@@ -883,14 +910,7 @@ preflight_checks() {
         exit 1
     fi
 
-    local available_space_kb
-    local available_space_mb
-    available_space_kb=$(df "$APP_DIR" | awk 'NR==2 {print $4}')
-    available_space_mb=$((available_space_kb / 1024))
-    if [ "$available_space_mb" -lt 1000 ]; then
-        error "Insufficient disk space. Required: 1GB, Available: ${available_space_mb}MB"
-        exit 1
-    fi
+    ensure_build_disk_space
 
     if ! systemctl is-active --quiet caddy; then
         error "Caddy is not running"
@@ -1780,6 +1800,7 @@ main() {
     create_backup
     install_workspace_dependencies
     build_web_surfaces
+    ensure_build_disk_space
     prepare_static_sites
     deploy_static_sites
     sync_production_caddy_config
